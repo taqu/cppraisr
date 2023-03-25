@@ -1,56 +1,3 @@
-// clang-format off
-/**
-# License
-This software is distributed under two licenses, choose whichever you like.
-
-## MIT License
-Copyright (c) 2023 Takuro Sakai
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## Public Domain
-This is free and unencumbered software released into the public domain.
-
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
-
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <http://unlicense.org>
-*/
-// clang-format on
 #include "util.h"
 #include <cassert>
 
@@ -158,8 +105,6 @@ namespace
                     weight = 1.0f;
                     next = size - 1;
                 }
-                prev = i * size + prev;
-                next = i * size + next;
                 int32_t index = i * size + j;
                 gx[index] = (m[next] - m[prev]) * w[index] * weight;
             }
@@ -178,11 +123,10 @@ namespace
                 weight = 1.0f;
                 next = size - 1;
             }
-            prev *= size;
-            next *= size;
+
             for(int32_t j = 0; j < size; ++j) {
                 int32_t index = i * size + j;
-                gy[index] = (m[next + j] - m[prev + j]) * w[index] * weight;
+                gy[index] = (m[next] - m[prev]) * w[index] * weight;
             }
         }
     }
@@ -204,6 +148,49 @@ namespace
     }
 } // namespace
 
+PCG32::PCG32()
+    : state_{0x853C49E6748FEA9BULL}
+{
+}
+
+PCG32::~PCG32()
+{
+}
+
+void PCG32::srand(uint64_t seed)
+{
+    do {
+        state_ = Increment + seed;
+    } while(0 == state_);
+    rand();
+}
+
+namespace
+{
+    inline uint32_t rotr32(uint32_t x, uint32_t r)
+    {
+        return (x >> r) | (x << ((~r + 1) & 31U));
+    }
+} // namespace
+
+uint32_t PCG32::rand()
+{
+    uint64_t x = state_;
+    uint32_t count = static_cast<uint32_t>(x >> 59);
+    state_ = x * Multiplier + Increment;
+    x ^= x >> 18;
+    return rotr32(static_cast<uint32_t>(x >> 27), count);
+}
+
+float PCG32::frand()
+{
+    uint32_t x = rand();
+    static const uint32_t m0 = 0x3F800000U;
+    static const uint32_t m1 = 0x007FFFFFU;
+    x = m0 | (x & m1);
+    return (*(float*)&x) - 1.000000000f;
+}
+
 double to_double(uint8_t x)
 {
     return x / 255.0;
@@ -213,10 +200,10 @@ uint8_t to_uint8(double x)
 {
     x *= 256.0;
     int32_t t = static_cast<int32_t>(x);
-    if(t < 0) {
+    if(t<0){
         return 0;
     }
-    if(256 <= t) {
+    if(256<=t){
         return 255;
     }
     return static_cast<uint8_t>(t);
@@ -360,19 +347,17 @@ void transpose(int32_t size, double* dst, const double* src)
     }
 }
 
-void power_m(int32_t size, double* m, const double* m0, int32_t p)
+void mul_mm(int32_t rows, int32_t cols0, int32_t cols1, double* r, const double* m0, const double* m1)
 {
-    double* t0 = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    double* t1 = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    ::memcpy(t0, m0, sizeof(double) * size * size);
-
-    for(int32_t i = 1; i < p; ++i) {
-        mul_mm(size, t1, t0, m0);
-        std::swap(t0, t1);
+    for(int32_t i = 0; i < rows; ++i) {
+        for(int32_t j = 0; j < cols1; ++j) {
+            double t = 0.0;
+            for(int32_t k = 0; k < cols0; ++k) {
+                t += m0[cols0 * i + k] * m1[cols1 * k + j];
+            }
+            r[cols1 * i + j] = t;
+        }
     }
-    ::memcpy(m, t0, sizeof(double) * size * size);
-    ::free(t0);
-    ::free(t1);
 }
 
 void mul_mm(int32_t size, double* m, const double* m0, const double* m1)
@@ -388,70 +373,86 @@ void mul_mm(int32_t size, double* m, const double* m0, const double* m1)
     }
 }
 
-void mul_mm(int32_t rows, int32_t cols, double* r, const double* m0, const double* m1)
+void power_m(int32_t size, double* m, const double* m0, int32_t p)
 {
-    for(int32_t i = 0; i < rows; ++i) {
-        for(int32_t j = 0; j < rows; ++j) {
-            double t = 0.0;
-            for(int32_t k = 0; k < cols; ++k) {
-                t += m0[rows * i + k] * m1[cols * k + j];
-            }
-            r[rows * i + j] = t;
-        }
+    double* t0 = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    double* t1 = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    ::memcpy(t0, m0, sizeof(double)*size*size);
+
+    for(int32_t i=1; i<p; ++i){
+        mul_mm(size, t1, t0, m0);
+        std::swap(t0, t1);
     }
+    ::memcpy(m, t0, sizeof(double)*size*size);
+    ::free(t0);
+    ::free(t1);
 }
 
-void mul_mv(int32_t size, double* r, const double* m, const double* v)
+void mul_mv(int32_t rows, int32_t cols, double* r, const double* m, const double* v)
 {
-    for(int32_t i = 0; i < size; ++i) {
-        double t = 0.0;
-        for(int32_t j = 0; j < size; ++j) {
-            t += m[size * i + j] * v[j];
+    for(int32_t i = 0; i < rows; ++i) {
+        r[i] = 0.0;
+        for(int32_t j = 0; j < cols; ++j) {
+            r[i] += m[i * cols + j] * v[j];
         }
-        r[i] = t;
     }
 }
 
 void mul_v(int32_t size, double* r, const double* v, const double a)
 {
     for(int32_t i = 0; i < size; ++i) {
-        r[i] = v[i] * a;
+        r[i] = v[i]*a;
     }
 }
 
-void add(int32_t size, double* m0, const double* m1)
+void add_m(int32_t size, double* m0, const double* m1)
+{
+    add_v(size*size, m0, m1);
+}
+
+void add_v(int32_t size, double* v0, const double* v1)
 {
     for(int32_t i = 0; i < size; ++i) {
-        m0[i] += m1[i];
+        v0[i] += v1[i];
     }
 }
 
-void square_m(int32_t size, double* r, const double* v)
+void square(int32_t size, double* r, const double* v)
 {
     for(int32_t i = 0; i < size; ++i) {
         for(int32_t j = 0; j < size; ++j) {
-            int32_t index = i * size + j;
-            r[index] = v[index] * v[index];
+            double x = v[i*size+j];
+            r[i * size + j] = x*x;
+        }
+    }
+}
+
+void dot(int32_t size, double* r, const double* m, const double* v)
+{
+    for(int32_t i = 0; i < size; ++i) {
+        r[i] = 0.0;
+        for(int32_t j = 0; j < size; ++j) {
+            r[i] += m[i * size + j] * v[j];
         }
     }
 }
 
 double dot(int32_t size, const double* x0, const double* x1)
 {
-    double t=0;
+    double t = 0.0;
     for(int32_t i = 0; i < size; ++i) {
-        t += x0[i]*x1[i];
+        t += x0[i] * x1[i];
     }
     return t;
 }
 
-double sum(int32_t size, const double* x)
+double sum(int32_t size, const double* v)
 {
-    double t = 0.0;
-    for(int32_t i = 0; i < size; ++i) {
-        t += x[i];
+    double total = 0;
+    for(int32_t i=0;i<size; ++i){
+        total += v[i];
     }
-    return t;
+    return total;
 }
 
 CGSolver::CGSolver(int32_t size)
@@ -474,7 +475,7 @@ CGSolver::~CGSolver()
 
 void CGSolver::solve(double* x, const double* A, const double* b, const int32_t max_iteration, const double epsilon)
 {
-    mul_mv(size_, Ax_, A, x);
+    mul_mv(size_, size_, Ax_, A, x);
     for(int32_t i = 0; i < size_; ++i) {
         r_[i] = b[i] - Ax_[i];
         p_[i] = r_[i];
@@ -482,7 +483,7 @@ void CGSolver::solve(double* x, const double* A, const double* b, const int32_t 
     double r0 = ::sqrt(dot(size_, r_, r_));
     r0 = r0 * r0 * epsilon * epsilon;
     for(int32_t i = 0; i < max_iteration; ++i) {
-        mul_mv(size_, Ap_, A, p_);
+        mul_mv(size_, size_, Ap_, A, p_);
         double d0 = dot(size_, r_, r_);
         double alpha = d0 / dot(size_, p_, Ap_);
         for(int32_t j = 0; j < size_; ++j) {
@@ -526,7 +527,7 @@ BiCGStabSolver::~BiCGStabSolver()
 
 void BiCGStabSolver::solve(double* x, const double* A, const double* b, const int32_t max_iteration, const double epsilon)
 {
-    mul_mv(size_, Ax_, A, x);
+    mul_mv(size_, size_, Ax_, A, x);
     for(int32_t i = 0; i < size_; ++i) {
         r_[i] = b[i] - Ax_[i];
         p_[i] = r_[i];
@@ -535,13 +536,13 @@ void BiCGStabSolver::solve(double* x, const double* A, const double* b, const in
     double r0 = ::sqrt(dot(size_, r_, r_));
     r0 = r0 * r0 * epsilon * epsilon;
     for(int32_t count = 0; count < max_iteration; ++count) {
-        mul_mv(size_, Ap_, A, p_);
+        mul_mv(size_, size_, Ap_, A, p_);
         double d0 = dot(size_, r_, rr_);
         double alpha = d0 / dot(size_, rr_, Ap_);
         for(int32_t i = 0; i < size_; ++i) {
             s_[i] = r_[i] - alpha * Ap_[i];
         }
-        mul_mv(size_, As_, A, s_);
+        mul_mv(size_, size_, As_, A, s_);
         double w = dot(size_, As_, s_) / dot(size_, As_, As_);
         for(int32_t i = 0; i < size_; ++i) {
             x[i] += alpha * p_[i] + w * s_[i];
@@ -561,20 +562,20 @@ void BiCGStabSolver::solve(double* x, const double* A, const double* b, const in
 
 void CGLSSolver::solve(int32_t size, double* x, double* A, const double* b, const int32_t max_iteration, const double epsilon, const double criteria)
 {
-    double* invA = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    for(int32_t i = 0; i < max_iteration; ++i) {
-        double sumA = sum(size * size, A);
-        if(sumA < criteria) {
+    double* invA = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    for(int32_t i=0; i<max_iteration; ++i){
+        double sumA = sum(size*size, A);
+        if(sumA<criteria){
             break;
         }
         double det = determinant(size, A);
-        if(det < 1.0) {
-            for(int32_t j = 0; j < size; ++j) {
-                A[j * size + j] += sumA * epsilon;
+        if(det<criteria){
+            for(int32_t j=0; j<size; ++j){
+                A[j*size + j] += sumA*epsilon;
             }
-        } else {
+        }else{
             invert(size, invA, A);
-            mul_mv(size, x, invA, b);
+            mul_mv(size, size, x, invA, b);
             break;
         }
     }
@@ -585,100 +586,100 @@ namespace
 {
     void cofactor(int32_t size, int32_t p, int32_t q, double* tmp, const double* m)
     {
-        int32_t i = 0;
-        int32_t j = 0;
-        for(int32_t r = 0; r < size; ++r) {
-            for(int32_t c = 0; c < size; ++c) {
-                if(r == p || c == q) {
+        int32_t i=0;
+        int32_t j=0;
+        for(int32_t r=0; r<size; ++r){
+            for(int32_t c=0; c<size; ++c){
+                if(r==p || c==q){
                     continue;
                 }
-                tmp[i * size + j] = m[r * size + c];
+                tmp[i*size+j] = m[r*size+c];
                 ++j;
-                if((size - 1) == j) {
-                    j = 0;
+                if((size-1)==j){
+                    j=0;
                     ++i;
                 }
             }
         }
     }
-} // namespace
+}
 
 double determinant(int32_t size, const double* m)
 {
-    double* m0 = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    ::memcpy(m0, m, sizeof(double) * size * size);
-    double* tmp = static_cast<double*>(::malloc(sizeof(double) * size));
+    double* m0 = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    ::memcpy(m0, m, sizeof(double)*size*size);
+    double* tmp = static_cast<double*>(::malloc(sizeof(double)*size));
     double total = 1.0;
     double det = 1.0;
-    for(int32_t i = 0; i < size; ++i) {
+    for(int32_t i=0; i<size; ++i){
         int32_t index = i;
-        while(index < size && abs(m0[index * size + i]) < 1.0e-16) {
+        while(index<size && abs(m0[index*size+i])<1.0e-16){
             ++index;
         }
-        if(size <= index) {
+        if(size<=index){
             continue;
         }
-        if(index != i) {
-            for(int32_t j = 0; j < size; ++j) {
-                std::swap(m0[index * size + j], m0[i * size + j]);
+        if(index != i){
+            for(int32_t j=0; j<size; ++j){
+                std::swap(m0[index*size+j], m0[i*size+j]);
             }
-            det *= pow(-1, index - i);
+            det *= pow(-1, index-i);
         }
-        for(int32_t j = 0; j < size; ++j) {
-            tmp[j] = m0[i * size + j];
+        for(int32_t j=0; j<size; ++j){
+            tmp[j] = m0[i*size+j];
         }
-        for(int32_t j = i + 1; j < size; ++j) {
+        for(int32_t j=i+1; j<size; ++j){
             double n0 = tmp[i];
-            double n1 = m0[j * size + i];
-            for(int32_t k = 0; k < size; ++k) {
-                m0[j * size + k] = (n0 * m0[j * size + k]) - (n1 * tmp[k]);
+            double n1 = m0[j*size+i];
+            for(int32_t k=0; k<size; ++k){
+                m0[j*size+k] = (n0 * m0[j*size+k]) - (n1*tmp[k]);
             }
             total *= n0;
         }
     }
-    for(int32_t i = 0; i < size; ++i) {
-        det *= m0[i * size + i];
+    for(int32_t i=0; i<size; ++i){
+        det *= m0[i*size+i];
     }
     ::free(tmp);
     ::free(m0);
-    return det / total;
+    return det/total;
 }
 
 void LU(int32_t size, double* q, double* L, double* U, const double* m)
 {
-    ::memset(q, 0, sizeof(double) * size * size);
-    ::memset(L, 0, sizeof(double) * size * size);
-    ::memcpy(U, m, sizeof(double) * size * size);
-    for(int32_t i = 0; i < size; ++i) {
-        q[i * size + i] = 1.0;
-        L[i * size + i] = 1.0;
+    ::memset(q, 0, sizeof(double)*size*size);
+    ::memset(L, 0, sizeof(double)*size*size);
+    ::memcpy(U, m, sizeof(double)*size*size);
+    for(int32_t i=0; i<size; ++i){
+        q[i*size+i] = 1.0;
+        L[i*size+i] = 1.0;
     }
-    for(int32_t i = 0; i < size - 1; ++i) {
+    for(int32_t i=0; i<size-1; ++i){
         int32_t pivot = i;
         double value = std::abs(m[i]);
-        for(int32_t j = i + 1; j < size; ++j) {
-            double x = std::abs(m[j * size + i]);
-            if(value < x) {
+        for(int32_t j=i+1; j<size; ++j){
+            double x = std::abs(m[j*size+i]);
+            if(value<x){
                 pivot = j;
                 value = x;
             }
         }
-        if(i != pivot) {
-            for(int32_t j = 0; j < size; ++j) {
-                std::swap(q[i * size + j], q[pivot * size + j]);
-                std::swap(L[i * size + j], L[pivot * size + j]);
-                std::swap(U[i * size + j], U[pivot * size + j]);
+        if(i != pivot){
+            for(int32_t j=0; j<size; ++j){
+                std::swap(q[i*size+j], q[pivot*size+j]);
+                std::swap(L[i*size+j], L[pivot*size+j]);
+                std::swap(U[i*size+j], U[pivot*size+j]);
             }
         }
-        for(int32_t j = 0; j < i; ++j) {
-            L[j * size + i] = 0;
+        for(int32_t j=0; j<i; ++j){
+            L[j*size+i] = 0;
         }
-        L[i * size + i] = 1.0;
-        for(int32_t j = i + 1; j < size; ++j) {
-            double x = U[j * size + i] / U[i * size + i];
-            L[j * size + i] = x;
-            for(int32_t k = i + 1; k < size; ++k) {
-                U[j * size + k] -= U[i * size + k] * x;
+        L[i*size+i] = 1.0;
+        for(int32_t j=i+1; j<size; ++j){
+            double x = U[j*size+i]/U[i*size+i];
+            L[j*size+i] = x;
+            for(int32_t k=i+1; k<size; ++k){
+                U[j*size+k] -= U[i*size+k] * x;
             }
         }
     }
@@ -686,46 +687,46 @@ void LU(int32_t size, double* q, double* L, double* U, const double* m)
 
 void invert(int32_t size, double* im, const double* m)
 {
-    double* q = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    double* L = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    double* U = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    double* L_ = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    double* U_ = static_cast<double*>(::malloc(sizeof(double) * size * size));
-    double* v = static_cast<double*>(::malloc(sizeof(double) * size));
+    double* q = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    double* L = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    double* U = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    double* L_ = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    double* U_ = static_cast<double*>(::malloc(sizeof(double)*size*size));
+    double* v = static_cast<double*>(::malloc(sizeof(double)*size));
 
     LU(size, q, L, U, m);
 
-    for(int32_t i = 0; i < size; ++i) {
-        ::memset(v, 0, sizeof(double) * size);
+    for(int32_t i=0; i<size; ++i){
+        ::memset(v, 0, sizeof(double)*size);
         v[i] = 1.0;
-        for(int32_t j = i + 1; j < size; ++j) {
+        for(int32_t j=i+1; j<size; ++j){
             double t = 0.0;
-            for(int32_t k = 0; k < j; ++k) {
-                t += L[j * size + k] * v[k];
+            for(int32_t k=0; k<j; ++k){
+                t += L[j*size+k]*v[k];
             }
             v[j] = -t;
         }
-        for(int32_t j = 0; j < size; ++j) {
-            L_[j * size + i] = v[j];
+        for(int32_t j=0; j<size; ++j){
+            L_[j*size+i] = v[j];
         }
     }
 
-    for(int32_t i = size - 1; 0 <= i; --i) {
-        ::memset(v, 0, sizeof(double) * size);
-        v[i] = 1.0 / U[i * size + i];
-        for(int32_t j = i - 1; 0 <= j; --j) {
+    for(int32_t i=size-1; 0<=i; --i){
+        ::memset(v, 0, sizeof(double)*size);
+        v[i] = 1.0/U[i*size+i];
+        for(int32_t j=i-1; 0<=j; --j){
             double t = 0.0;
-            for(int32_t k = size - 1; j < k; --k) {
-                t += U[j * size + k] * v[k];
+            for(int32_t k=size-1; j<k; --k){
+                t += U[j*size+k]*v[k];
             }
-            v[j] = -t / U[j * size + j];
+            v[j] = -t/U[j*size+j];
         }
-        for(int32_t j = 0; j < size; ++j) {
-            U_[j * size + i] = v[j];
+        for(int32_t j=0; j<size; ++j){
+            U_[j*size+i] = v[j];
         }
     }
 
-    mul_mm(size, U, U_, L_);
+    mul_mm(size, U, U_,L_);
     mul_mm(size, im, U, q);
 
     ::free(v);
@@ -735,5 +736,3 @@ void invert(int32_t size, double* im, const double* m)
     ::free(L);
     ::free(q);
 }
-
-} // namespace cppraisr

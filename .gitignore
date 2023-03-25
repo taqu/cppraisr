@@ -34,3 +34,7 @@
 /.vsn
 /bin
 /build
+/result
+/test_data
+/train_data
+/model

@@ -67,37 +67,49 @@ namespace cppraisr
 struct RAISRParam
 {
     inline static constexpr uint8_t R = 2;
+    inline static constexpr uint8_t R2 = R*R;
     inline static constexpr uint8_t PatchSize = 7;
+    inline static constexpr uint8_t PatchSize2 = PatchSize*PatchSize;
+    inline static constexpr uint16_t PatchSize4 = PatchSize2*PatchSize2;
     inline static constexpr uint8_t GradientSize = 5;
     inline static constexpr uint8_t Qangle = 24;
     inline static constexpr uint8_t Qstrength = 3;
     inline static constexpr uint8_t Qcoherence = 3;
 };
 
-using FilterSet = Array5d<double, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R*RAISRParam::R, RAISRParam::PatchSize*RAISRParam::PatchSize>;
-
 class RAISRTrainer
 {
 public:
+    using FilterSet = Array5d<double, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, RAISRParam::PatchSize2>;
+    using ConjugateSet = Array5d<double, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, RAISRParam::PatchSize4>;
+
     RAISRTrainer();
     ~RAISRTrainer();
 
-    void train(const std::vector<std::filesystem::path>& images);
+    void train(const std::vector<std::filesystem::path>& images, int32_t max_images);
 
 private:
     RAISRTrainer(const RAISRTrainer&) = delete;
     RAISRTrainer& operator=(const RAISRTrainer&) = delete;
-    int32_t train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original);
 
-    ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize> patch_image_;
-    ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize> patch_transposed_;
-    ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize> gradient_patch_;
-    ImageStatic<double, RAISRParam::PatchSize*RAISRParam::PatchSize, RAISRParam::PatchSize*RAISRParam::PatchSize> ATA_;
-    ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize> ATb_;
-    ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize> weights_;
+    using PatchImage = ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize>;
+    using GradientImage = ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize>;
+    using ConjugateImage = ImageStatic<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>;
 
+    void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original);
+    void copy_examples();
+    void solve(const std::filesystem::path& model_directory);
+
+    int64_t count_;
+    PatchImage patch_image_;
+    GradientImage gradient_patch_;
+    ConjugateImage ATA_;
+    PatchImage ATb_;
+    GradientImage weights_;
+
+    ConjugateSet Q_;
+    FilterSet V_;
     FilterSet H_;
-    BiCGStabSolver solver_;
 };
 } // namespace cppraisr
 

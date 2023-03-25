@@ -187,6 +187,18 @@ public:
     ImageStatic();
     ~ImageStatic();
 
+    constexpr int32_t count() const
+    {
+        return W*H;
+    }
+
+    constexpr int32_t size() const
+    {
+        return sizeof(T)*W*H;
+    }
+
+    void clear();
+
     constexpr int32_t w() const
     {
         return W;
@@ -216,6 +228,12 @@ ImageStatic<T, W, H>::~ImageStatic()
 }
 
 template<class T, int32_t W, int32_t H>
+void ImageStatic<T, W, H>::clear()
+{
+    ::memset(pixels_, 0, sizeof(T)*W*H);
+}
+
+template<class T, int32_t W, int32_t H>
 const T& ImageStatic<T, W, H>::operator()(int32_t x, int32_t y) const
 {
     return pixels_[y * W + x];
@@ -233,6 +251,16 @@ class Array5d
 public:
     Array5d();
     ~Array5d();
+
+    constexpr int32_t count() const
+    {
+        return N0 * N1 * N2 * N3 * N4;
+    }
+
+    constexpr size_t size() const
+    {
+        return sizeof(T) * count();
+    }
 
     void clear();
     void write(std::ostream& os);
@@ -265,41 +293,40 @@ public:
 private:
     Array5d(const Array5d&) = delete;
     Array5d& operator=(const Array5d&) = delete;
-    std::unique_ptr<T[]> items_;
+    T* items_;
 };
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 Array5d<T, N0, N1, N2, N3, N4>::Array5d()
+    :items_(nullptr)
 {
-    size_t size = sizeof(T) * N0 * N1 * N2 * N3 * N4;
-    items_.reset(new T[size]);
-    ::memset(items_.get(), 0, sizeof(T) * size);
+    items_ = static_cast<T*>(::malloc(size()));
+    ::memset(items_, 0, size());
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 Array5d<T, N0, N1, N2, N3, N4>::~Array5d()
 {
+    ::free(items_);
+    items_ = nullptr;
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 void Array5d<T, N0, N1, N2, N3, N4>::clear()
 {
-    size_t size = sizeof(T) * N0 * N1 * N2 * N3 * N4;
-    ::memset(items_.get(), 0, sizeof(T) * size);
+    ::memset(items_, 0, size());
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 void Array5d<T, N0, N1, N2, N3, N4>::write(std::ostream& os)
 {
-    size_t size = sizeof(T) * N0 * N1 * N2 * N3 * N4;
-    os.write((const char*)items_.get(), size);
+    os.write((const char*)items_, size());
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 void Array5d<T, N0, N1, N2, N3, N4>::read(std::istream& is)
 {
-    size_t size = sizeof(T) * N0 * N1 * N2 * N3 * N4;
-    is.read((char*)items_.get(), size);
+    is.read((char*)items_, size());
 }
 
 double to_double(uint8_t x);
@@ -311,13 +338,15 @@ void solv2x2(double evalues[2], double evectors[4], const double m[4]);
 std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const double* gradient_patch, const double* weights, int32_t angles);
 
 void transpose(int32_t size, double* dst, const double* src);
-void mul_mm(int32_t rows, int32_t cols0, int32_t cols1, double* r, const double* m0, const double* m1);
-void mul_mv(int32_t rows, int32_t cols, double* r, const double* m, const double* v);
+void power_m(int32_t size, double* m, const double* m0, int32_t p);
+void mul_mm(int32_t size, double* m, const double* m0, const double* m1);
+void mul_mm(int32_t rows, int32_t cols, double* r, const double* m0, const double* m1);
+void mul_mv(int32_t size, double* r, const double* m, const double* v);
 void mul_v(int32_t size, double* r, const double* v, const double a);
 void add(int32_t size, double* m0, const double* m1);
-void square(int32_t size, double* r, const double* v);
-void dot(int32_t size, double* r, const double* m, const double* x);
+void square_m(int32_t size, double* r, const double* v);
 double dot(int32_t size, const double* x0, const double* x1);
+double sum(int32_t size, const double* x);
 
 class CGSolver
 {
@@ -355,6 +384,17 @@ private:
     double* s_;
     double* As_;
 };
+
+class CGLSSolver
+{
+public:
+    static void solve(int32_t size, double* x, double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 1.0e-16, const double criteria=1.0);
+
+};
+
+double determinant(int32_t size, const double* m);
+void LU(int32_t size, double* q, double* L, double* U, const double* m);
+void invert(int32_t size, double* im, const double* m);
 
 } // namespace cppraisr
 #endif // INC_CPPRAISR_UTIL_H_

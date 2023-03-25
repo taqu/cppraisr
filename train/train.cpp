@@ -27,8 +27,7 @@ int main(int argc, char** argv)
                                                                    }
                                                                    return false;
                                                                });
-    RAISRParam params;
-    RAISRTrainer trainer;
-    trainer.train(files);
+    std::unique_ptr<RAISRTrainer> trainer = std::make_unique<RAISRTrainer>();
+    trainer->train(files, 500);
     return 0;
 }
