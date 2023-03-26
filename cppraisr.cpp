@@ -139,8 +139,7 @@ void RAISRTrainer::train(const std::vector<std::filesystem::path>& images, int32
         train_image(upscaledLR, original);
         ++image_count;
     } // for(size_t i
-
-    copy_examples();
+    //copy_examples();
     solve(model_directory);
 }
 
@@ -243,7 +242,6 @@ void RAISRTrainer::copy_examples()
     double* newQ1 = static_cast<double*>(::malloc(sizeof(double) * RAISRParam::PatchSize4));
     double* newV = static_cast<double*>(::malloc(sizeof(double) * RAISRParam::PatchSize2));
 
-    #if 0
     for(int32_t pixeltype = 0; pixeltype < (RAISRParam::R * RAISRParam::R); ++pixeltype) {
         for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
             for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
@@ -276,9 +274,8 @@ void RAISRTrainer::copy_examples()
             }
         }
     }
-    #endif
-    add(Q_.count(), &Q_(0, 0, 0, 0, 0), &QExt(0, 0, 0, 0, 0));
-    add(V_.count(), &V_(0, 0, 0, 0, 0), &VExt(0, 0, 0, 0, 0));
+    add(Q_.count(), Q_(0, 0, 0, 0), QExt(0, 0, 0, 0));
+    add(V_.count(), V_(0, 0, 0, 0), VExt(0, 0, 0, 0));
 
     ::free(newV);
     ::free(newQ1);
@@ -319,6 +316,23 @@ void RAISRTrainer::solve(const std::filesystem::path& model_directory)
         std::ofstream file(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
             H_.write(file);
+            file.close();
+        }
+
+        filepath = model_directory;
+        filepath.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}.json",
+                                    now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min));
+        file.open(filepath.c_str(), std::ios::binary);
+        if(file.is_open()){
+            for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
+                for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
+                    for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
+                        for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
+                            CGLSSolver::solve(RAISRParam::PatchSize2, H_(angle, strength, coherence, pixeltype), Q_(angle, strength, coherence, pixeltype), V_(angle, strength, coherence, pixeltype));
+                        }
+                    }
+                }
+            }
         }
     }
 }

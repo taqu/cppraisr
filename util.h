@@ -388,7 +388,7 @@ private:
 class CGLSSolver
 {
 public:
-    static void solve(int32_t size, double* x, double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 1.0e-16, const double criteria=1.0);
+    static void solve(int32_t size, double* x, double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 1.0e-16, const double criteria=100.0);
 
 };
 

@@ -28,6 +28,6 @@ int main(int argc, char** argv)
                                                                    return false;
                                                                });
     std::unique_ptr<RAISRTrainer> trainer = std::make_unique<RAISRTrainer>();
-    trainer->train(files, 500);
+    trainer->train(files, 1);
     return 0;
 }
