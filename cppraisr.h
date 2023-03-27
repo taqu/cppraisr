@@ -70,7 +70,7 @@ namespace cppraisr
 
 struct RAISRParam
 {
-    inline static constexpr uint8_t R = 2;
+    inline static constexpr uint8_t R = 1;
     inline static constexpr uint8_t R2 = R * R;
     inline static constexpr uint8_t PatchSize = 7;
     inline static constexpr uint8_t PatchSize2 = PatchSize * PatchSize;
@@ -89,7 +89,6 @@ public:
 
     using FilterSet = Array5d<VectorParamSize2, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
     using ConjugateSet = Array5d<MatrixParamSize2, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
-    using CounterSet = Array5d<int32_t, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
 
     RAISRTrainer();
     ~RAISRTrainer();
@@ -112,7 +111,10 @@ private:
         const std::vector<std::filesystem::path>* files_ = nullptr;
         size_t max_images_ = 0;
         size_t count_ = 0;
+        size_t total_operations_ = 0;
         bool output_checkpoints_ = false;
+        size_t checkpoint_cycle_ = 100;
+        size_t checkpoint_count_ = 0;
         std::mutex mutex_;
 
         GradientPatch weights_;
@@ -127,11 +129,8 @@ private:
         int32_t image_count_;
         ImagePatch patch_image_;
         GradientPatch gradient_patch_;
-        ConjugatePatch ATA_;
-        ImagePatch ATb_;
         ConjugateSet Q_;
         FilterSet V_;
-        CounterSet counter_;
     };
 
     static void train_thread(SharedContext& shared);

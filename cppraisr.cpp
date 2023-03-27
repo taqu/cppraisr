@@ -94,7 +94,10 @@ void RAISRTrainer::SharedContext::inject(int32_t count, const ConjugateSet& Q, c
         DV[i] += SV[i];
     }
 
-    if(output_checkpoints_) {
+    total_operations_ += count;
+    size_t checkpoint_count = checkpoint_count_ + count;
+    if(output_checkpoints_ && checkpoint_cycle_<=(checkpoint_count-checkpoint_count_)){
+        checkpoint_count_ = checkpoint_count;
         std::filesystem::path filepath = model_directory_;
         filepath.append(std::format("q_{0:06d}.bin", count));
         std::ofstream file(filepath.c_str(), std::ios::binary);
@@ -133,7 +136,7 @@ void RAISRTrainer::train(const std::vector<std::filesystem::path>& images, int32
     gaussian2d(RAISRParam::GradientSize, &sharedContext->weights_(0, 0), 2.0);
 
     sharedContext->model_directory_ = std::filesystem::current_path();
-    sharedContext->model_directory_.append("model");
+    sharedContext->model_directory_.append("filters");
     if(!std::filesystem::exists(sharedContext->model_directory_)) {
         std::filesystem::create_directory(sharedContext->model_directory_);
     }
@@ -164,6 +167,32 @@ void RAISRTrainer::train(const std::vector<std::filesystem::path>& images, int32
         std::ofstream file(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
             sharedContext->H_.write_matrix(file);
+            file.close();
+        }
+
+        filepath = sharedContext->model_directory_;
+        filepath.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}{5:02d}.json",
+                                    now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec));
+        file.open(filepath.c_str(), std::ios::binary);
+        if(file.is_open()) {
+            file << "{\"filter\":[\n";
+            for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
+                for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
+                    for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
+                        for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
+                            const VectorParamSize2& filter = *sharedContext->H_(angle, strength, coherence, pixeltype);
+                            for(int32_t i=0; i<filter.rows(); ++i){
+                                double x = filter(i,0);
+                                file << x << ',';
+                            }
+                            file << '\n';
+                        }
+                    }
+                }
+            }
+            file.seekp(-2, std::ios::_Seekcur);
+            file << "\n]}\n";
+            file.close();
         }
     }
 }
@@ -173,8 +202,6 @@ void RAISRTrainer::train_thread(SharedContext& shared)
     std::unique_ptr<LocalContext> context = std::make_unique<LocalContext>();
     context->patch_image_.clear();
     context->gradient_patch_.clear();
-    context->ATA_.clear();
-    context->ATb_.clear();
     for(;;) {
         std::optional<std::tuple<std::filesystem::path, int32_t>> image = shared.next();
         if(!image) {
@@ -259,7 +286,6 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
 
     context.Q_.clear_matrix();
     context.V_.clear_matrix();
-    context.counter_.clear();
 
     int32_t hend = upscaledLR.h() < margin ? 0 : upscaledLR.h() - margin;
     int32_t wend = upscaledLR.w() < margin ? 0 : upscaledLR.w() - margin;
@@ -291,29 +317,11 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
 
             *context.Q_(angle, strength, coherence, pixeltype) += ATA;
             *context.V_(angle, strength, coherence, pixeltype) += ATb;
-            *context.counter_(angle, strength, coherence, pixeltype) += 1;
         } // int32_t j = margin
     }     // int32_t i = margin
-
-    //for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
-    //    for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
-    //        for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
-    //            for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
-    //                int32_t count = *context.counter_(angle, strength, coherence, pixeltype);
-    //                if(count<=1){
-    //                    continue;
-    //                }
-    //                double inv = 1.0/count;
-    //                *context.Q_(angle, strength, coherence, pixeltype) *= inv;
-    //                *context.V_(angle, strength, coherence, pixeltype) *= inv;
-    //            }
-    //        }
-    //    }
-    //}
     shared.inject(context.image_count_, context.Q_, context.V_);
 }
 
-#if 1
 void RAISRTrainer::copy_examples(SharedContext& shared)
 {
     MatrixParamSize2* P = new MatrixParamSize2[7+4];
@@ -391,30 +399,6 @@ void RAISRTrainer::copy_examples(SharedContext& shared)
 
     delete[] P;
 }
-#endif
-namespace
-{
-    void cgls(Eigen::Matrix<double, RAISRParam::PatchSize2, 1>& x, const Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>& A, const Eigen::Matrix<double, RAISRParam::PatchSize2, 1>& b, const int32_t max_iteration = 1000'000'000, const double epsilon = 0.000000005, const double criteria=1.0)
-    {
-        Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2> Q = A;
-        for(int32_t i=0; ; ++i){
-            if(max_iteration<=i){
-                break;
-            }
-            double sumQ = Q.sum();
-            if(sumQ<criteria){
-                break;
-            }
-            double det = Q.determinant();
-            if(det < 1.0){
-                Q += Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>::Identity() * sumQ * epsilon;
-            }else{
-                x = Q.inverse() * b;
-                break;
-            }
-        }
-    }
-}
 
 void RAISRTrainer::solve(SharedContext& shared)
 {
@@ -426,7 +410,6 @@ void RAISRTrainer::solve(SharedContext& shared)
                     Eigen::Matrix<double, RAISRParam::PatchSize2, 1>* H = shared.H_(angle, strength, coherence, pixeltype);
                     const Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>* Q = shared.Q_(angle, strength, coherence, pixeltype);
                     const Eigen::Matrix<double, RAISRParam::PatchSize2, 1>* V = shared.V_(angle, strength, coherence, pixeltype);
-                    //cgls(*H,*Q,*V);
                     const auto LDLT = Q->ldlt();
                     *H = LDLT.solve(*V);
                     if(Eigen::Success != LDLT.info()){

@@ -66,7 +66,7 @@ For more information, please refer to <http://unlicense.org>
 #include <tuple>
 #include <utility>
 #include <stb/stb_image.h>
-#include <Eigen/Eigen>
+#include <eigen/Eigen/Eigen>
 
 namespace cppraisr
 {
@@ -171,7 +171,7 @@ Image<T>::~Image()
 template<class T>
 void Image<T>::reset(int32_t width, int32_t height, int32_t channels, T* pixels, std::function<void(void*)> deleter)
 {
-    ::free(pixels_);
+    deleter_(pixels_);
     width_ = width;
     height_ = height;
     channels_ = channels;
@@ -388,66 +388,7 @@ void gaussian2d(int32_t size, double* w, double sigma);
 void solv2x2(double evalues[2], double evectors[4], const double m[4]);
 std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const double* gradient_patch, const double* weights, int32_t angles);
 
-void transpose(int32_t size, double* dst, const double* src);
-void mul_mm(int32_t rows, int32_t cols0, int32_t cols1, double* r, const double* m0, const double* m1);
-void mul_mm(int32_t size, double* m, const double* m0, const double* m1);
-void power_m(int32_t size, double* m, const double* m0, int32_t p);
-void mul_mv(int32_t rows, int32_t cols, double* r, const double* m, const double* v);
-void mul_v(int32_t size, double* r, const double* v, const double a);
-void add_m(int32_t size, double* m0, const double* m1);
-void add_v(int32_t size, double* v0, const double* v1);
-void square(int32_t size, double* r, const double* v);
-void dot(int32_t size, double* r, const double* m, const double* x);
-double dot(int32_t size, const double* x0, const double* x1);
-double sum(int32_t size, const double* v);
-
-class CGSolver
-{
-public:
-    CGSolver(int32_t size);
-    ~CGSolver();
-    void solve(double* x, const double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 0.000000005);
-
-private:
-    CGSolver(const CGSolver&) = delete;
-    CGSolver& operator=(const CGSolver&) = delete;
-    int32_t size_;
-    double* Ax_;
-    double* r_;
-    double* p_;
-    double* Ap_;
-};
-
-class BiCGStabSolver
-{
-public:
-    BiCGStabSolver(int32_t size);
-    ~BiCGStabSolver();
-    void solve(double* x, const double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 1.0e-16);
-
-private:
-    BiCGStabSolver(const BiCGStabSolver&) = delete;
-    BiCGStabSolver& operator=(const BiCGStabSolver&) = delete;
-    int32_t size_;
-    double* Ax_;
-    double* r_;
-    double* rr_;
-    double* p_;
-    double* Ap_;
-    double* s_;
-    double* As_;
-};
-
-class CGLSSolver
-{
-public:
-    static void solve(int32_t size, double* x, double* A, const double* b, const int32_t max_iteration = 10000, const double epsilon = 0.000000005, const double criteria=1.0);
-
-};
-
-double determinant(int32_t size, const double* m);
-void LU(int32_t size, double* q, double* L, double* U, const double* m);
-void invert(int32_t size, double* im, const double* m);
+double ssim(int32_t size, const double*);
 
 } // namespace cppraisr
 #endif // INC_CPPRAISR_UTIL_H_

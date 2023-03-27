@@ -1,8 +1,8 @@
-[submodule "thirdparty/linalg"]
-	path = thirdparty/linalg
-	url = https://github.com/sgorsten/linalg.git
-	branch = main
 [submodule "thirdparty/eigen"]
 	path = thirdparty/eigen
 	url = https://gitlab.com/libeigen/eigen.git
 	branch = 3.4
+[submodule "thirdparty/flags"]
+	path = thirdparty/flags
+	url = https://github.com/sailormoon/flags.git
+	branch = master
