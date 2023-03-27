@@ -66,17 +66,33 @@ For more information, please refer to <http://unlicense.org>
 #include <tuple>
 #include <utility>
 #include <stb/stb_image.h>
+#include <Eigen/Eigen>
 
 namespace cppraisr
 {
 
-    template<class T>
-    void swap(T& x0, T& x1)
+template<class T>
+void swap(T& x0, T& x1)
 {
-        T t = x0;
-        x0 = x1;
-        x1 = t;
+    T t = x0;
+    x0 = x1;
+    x1 = t;
 }
+
+class PCG32
+{
+public:
+    PCG32();
+    ~PCG32();
+    void srand(uint64_t seed);
+    uint32_t rand();
+    float frand();
+
+private:
+    inline static constexpr uint64_t Increment = 0xDA3E39CB94B95BDBULL;
+    inline static constexpr uint64_t Multiplier = 0x5851F42D4C957F2DULL;
+    uint64_t state_;
+};
 
 template<class T>
 class Image
@@ -145,6 +161,11 @@ template<class T>
 Image<T>::~Image()
 {
     deleter_(pixels_);
+    deleter_ = nullptr;
+    pixels_ = nullptr;
+    channels_ = 0;
+    height_ = 0;
+    width_ = 0;
 }
 
 template<class T>
@@ -187,17 +208,7 @@ public:
     ImageStatic();
     ~ImageStatic();
 
-    constexpr int32_t count() const
-    {
-        return W*H;
-    }
-
-    constexpr int32_t size() const
-    {
-        return sizeof(T)*W*H;
-    }
-
-    void clear();
+    void clear(int32_t value=0);
 
     constexpr int32_t w() const
     {
@@ -211,6 +222,8 @@ public:
     const T& operator()(int32_t x, int32_t y) const;
     T& operator()(int32_t x, int32_t y);
 
+    void write(std::ostream& os);
+    void read(std::istream& is);
 private:
     ImageStatic(const ImageStatic&) = delete;
     ImageStatic& operator=(const ImageStatic&) = delete;
@@ -228,9 +241,9 @@ ImageStatic<T, W, H>::~ImageStatic()
 }
 
 template<class T, int32_t W, int32_t H>
-void ImageStatic<T, W, H>::clear()
+void ImageStatic<T, W, H>::clear(int32_t value)
 {
-    ::memset(pixels_, 0, sizeof(T)*W*H);
+    ::memset(pixels_, value, sizeof(T)*W*H);
 }
 
 template<class T, int32_t W, int32_t H>
@@ -245,6 +258,20 @@ T& ImageStatic<T, W, H>::operator()(int32_t x, int32_t y)
     return pixels_[y * W + x];
 }
 
+template<class T, int32_t W, int32_t H>
+void ImageStatic<T, W, H>::write(std::ostream& os)
+{
+    size_t size = sizeof(T) * W * H;
+    os.write((const char*)pixels_, size);
+}
+
+template<class T, int32_t W, int32_t H>
+void ImageStatic<T, W, H>::read(std::istream& is)
+{
+    size_t size = sizeof(T) * W * H;
+    is.read((char*)pixels_, size);
+}
+
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 class Array5d
 {
@@ -256,15 +283,14 @@ public:
     {
         return N0 * N1 * N2 * N3 * N4;
     }
-
     constexpr size_t size() const
     {
         return sizeof(T) * count();
     }
-
     void clear();
-    void write(std::ostream& os);
-    void read(std::istream& is);
+    void clear_matrix();
+    void write_matrix(std::ostream& os);
+    void read_matrix(std::istream& is);
 
     const T& operator()(int32_t i0, int32_t i1, int32_t i2, int32_t i3, int32_t i4) const
     {
@@ -300,33 +326,58 @@ template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 Array5d<T, N0, N1, N2, N3, N4>::Array5d()
     :items_(nullptr)
 {
-    items_ = static_cast<T*>(::malloc(size()));
-    ::memset(items_, 0, size());
+    items_ = new T[count()];
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 Array5d<T, N0, N1, N2, N3, N4>::~Array5d()
 {
-    ::free(items_);
+    delete[] items_;
     items_ = nullptr;
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 void Array5d<T, N0, N1, N2, N3, N4>::clear()
 {
-    ::memset(items_, 0, size());
+    ::memset(items_, 0,  size());
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
-void Array5d<T, N0, N1, N2, N3, N4>::write(std::ostream& os)
+void Array5d<T, N0, N1, N2, N3, N4>::clear_matrix()
 {
-    os.write((const char*)items_, size());
+    T* items = (*this)(0,0,0,0);
+    for(int32_t i=0; i<count(); ++i){
+        items[i].setZero();
+    }
 }
 
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
-void Array5d<T, N0, N1, N2, N3, N4>::read(std::istream& is)
+void Array5d<T, N0, N1, N2, N3, N4>::write_matrix(std::ostream& os)
 {
-    is.read((char*)items_, size());
+    const T* items = (*this)(0, 0, 0, 0);
+    for(int32_t i = 0; i < count(); ++i) {
+        for(int32_t r = 0; r < items[i].rows(); ++r) {
+            for(int32_t c = 0; c < items[i].cols(); ++c) {
+                double t = items[i](r, c);
+                os.write(reinterpret_cast<const char*>(&t), sizeof(double));
+            }
+        }
+    }
+}
+
+template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
+void Array5d<T, N0, N1, N2, N3, N4>::read_matrix(std::istream& is)
+{
+    T* items = (*this)(0, 0, 0, 0);
+    for(int32_t i = 0; i < count(); ++i) {
+        for(int32_t r = 0; r < items[i].rows(); ++r) {
+            for(int32_t c = 0; c < items[i].cols(); ++c) {
+                double t = 0.0;
+                is.read(reinterpret_cast<char*>(&t), sizeof(double));
+                items[i](r, c) = t;
+            }
+        }
+    }
 }
 
 double to_double(uint8_t x);
@@ -338,22 +389,24 @@ void solv2x2(double evalues[2], double evectors[4], const double m[4]);
 std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const double* gradient_patch, const double* weights, int32_t angles);
 
 void transpose(int32_t size, double* dst, const double* src);
-void power_m(int32_t size, double* m, const double* m0, int32_t p);
+void mul_mm(int32_t rows, int32_t cols0, int32_t cols1, double* r, const double* m0, const double* m1);
 void mul_mm(int32_t size, double* m, const double* m0, const double* m1);
-void mul_mm(int32_t rows, int32_t cols, double* r, const double* m0, const double* m1);
-void mul_mv(int32_t size, double* r, const double* m, const double* v);
+void power_m(int32_t size, double* m, const double* m0, int32_t p);
+void mul_mv(int32_t rows, int32_t cols, double* r, const double* m, const double* v);
 void mul_v(int32_t size, double* r, const double* v, const double a);
-void add(int32_t size, double* m0, const double* m1);
-void square_m(int32_t size, double* r, const double* v);
+void add_m(int32_t size, double* m0, const double* m1);
+void add_v(int32_t size, double* v0, const double* v1);
+void square(int32_t size, double* r, const double* v);
+void dot(int32_t size, double* r, const double* m, const double* x);
 double dot(int32_t size, const double* x0, const double* x1);
-double sum(int32_t size, const double* x);
+double sum(int32_t size, const double* v);
 
 class CGSolver
 {
 public:
     CGSolver(int32_t size);
     ~CGSolver();
-    void solve(double* x, const double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 1.0e-16);
+    void solve(double* x, const double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 0.000000005);
 
 private:
     CGSolver(const CGSolver&) = delete;
@@ -388,7 +441,7 @@ private:
 class CGLSSolver
 {
 public:
-    static void solve(int32_t size, double* x, double* A, const double* b, const int32_t max_iteration = 1000, const double epsilon = 1.0e-16, const double criteria=100.0);
+    static void solve(int32_t size, double* x, double* A, const double* b, const int32_t max_iteration = 10000, const double epsilon = 0.000000005, const double criteria=1.0);
 
 };
 

@@ -53,13 +53,17 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org>
 */
 // clang-format on
+#include "util.h"
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
-#include <vector>
+#include <mutex>
+#include <optional>
 #include <stb/stb_image.h>
-#include "util.h"
+#include <thread>
+#include <tuple>
+#include <vector>
 
 namespace cppraisr
 {
@@ -67,10 +71,10 @@ namespace cppraisr
 struct RAISRParam
 {
     inline static constexpr uint8_t R = 2;
-    inline static constexpr uint8_t R2 = R*R;
+    inline static constexpr uint8_t R2 = R * R;
     inline static constexpr uint8_t PatchSize = 7;
-    inline static constexpr uint8_t PatchSize2 = PatchSize*PatchSize;
-    inline static constexpr uint16_t PatchSize4 = PatchSize2*PatchSize2;
+    inline static constexpr uint8_t PatchSize2 = PatchSize * PatchSize;
+    inline static constexpr int32_t PatchSize4 = PatchSize2 * PatchSize2;
     inline static constexpr uint8_t GradientSize = 5;
     inline static constexpr uint8_t Qangle = 24;
     inline static constexpr uint8_t Qstrength = 3;
@@ -80,38 +84,61 @@ struct RAISRParam
 class RAISRTrainer
 {
 public:
-    using FilterSet = Array5d<double, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, RAISRParam::PatchSize2>;
-    using ConjugateSet = Array5d<double, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, RAISRParam::PatchSize4>;
+    using VectorParamSize2 = Eigen::Matrix<double, RAISRParam::PatchSize2, 1>;
+    using MatrixParamSize2 = Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>;
+
+    using FilterSet = Array5d<VectorParamSize2, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
+    using ConjugateSet = Array5d<MatrixParamSize2, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
+    using CounterSet = Array5d<int32_t, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
 
     RAISRTrainer();
     ~RAISRTrainer();
 
-    void train(const std::vector<std::filesystem::path>& images, int32_t max_images);
+    void train(const std::vector<std::filesystem::path>& images, int32_t num_threads = 4, int32_t max_images = 2147483647);
 
 private:
     RAISRTrainer(const RAISRTrainer&) = delete;
     RAISRTrainer& operator=(const RAISRTrainer&) = delete;
 
-    using PatchImage = ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize>;
-    using GradientImage = ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize>;
-    using ConjugateImage = ImageStatic<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>;
+    using ImagePatch = ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize>;
+    using GradientPatch = ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize>;
+    using ConjugatePatch = ImageStatic<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>;
 
-    void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original);
-    void copy_examples();
-    void solve(const std::filesystem::path& model_directory);
+    struct SharedContext
+    {
+        std::optional<std::tuple<std::filesystem::path, int32_t>> next();
+        void inject(int32_t count, const ConjugateSet& Q, const FilterSet& V);
 
-    int64_t count_;
-    PatchImage patch_image_;
-    GradientImage gradient_patch_;
-    ConjugateImage ATA_;
-    PatchImage ATb_;
-    GradientImage weights_;
+        const std::vector<std::filesystem::path>* files_ = nullptr;
+        size_t max_images_ = 0;
+        size_t count_ = 0;
+        bool output_checkpoints_ = false;
+        std::mutex mutex_;
 
-    ConjugateSet Q_;
-    FilterSet V_;
-    FilterSet H_;
+        GradientPatch weights_;
+        ConjugateSet Q_;
+        FilterSet V_;
+        FilterSet H_;
+        std::filesystem::path model_directory_;
+    };
+
+    struct LocalContext
+    {
+        int32_t image_count_;
+        ImagePatch patch_image_;
+        GradientPatch gradient_patch_;
+        ConjugatePatch ATA_;
+        ImagePatch ATb_;
+        ConjugateSet Q_;
+        FilterSet V_;
+        CounterSet counter_;
+    };
+
+    static void train_thread(SharedContext& shared);
+    static void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original, LocalContext& context, SharedContext& shared);
+    void copy_examples(SharedContext& shared);
+    void solve(SharedContext& shared);
 };
 } // namespace cppraisr
 
-#endif //INC_CPPRAISR_H_
-
+#endif // INC_CPPRAISR_H_
