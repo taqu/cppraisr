@@ -43,7 +43,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG /SUBSYSTEM:CONSOLE")
 
 elseif(UNIX)
-    set(DEFAULT_CXX_FLAGS "-Wall -std=c++20 -march=x86-64-v3")
+    set(CMAKE_CXX_FLAGS "-Wall -Wextra -std=c++20 -march=x86-64-v3")
 elseif(APPLE)
 endif()
 
