@@ -98,14 +98,14 @@ void RAISRTrainer::SharedContext::inject(int32_t count, const ConjugateSet& Q, c
     size_t checkpoint_count = checkpoint_count_ + count;
     if(output_checkpoints_ && checkpoint_cycle_<=(checkpoint_count-checkpoint_count_)){
         checkpoint_count_ = checkpoint_count;
-        std::filesystem::path filepath = model_directory_;
-        filepath.append(std::format("q_{0:06d}.bin", count));
+        std::string filepath = model_name_.string();
+        filepath.append(std::format("_q_{0:06d}.bin", count));
         std::ofstream file(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
             Q_.write_matrix(file);
         }
-        filepath = model_directory_;
-        filepath.append(std::format("v_{0:06d}.bin", count));
+        filepath = model_name_.string();
+        filepath.append(std::format("_v_{0:06d}.bin", count));
         file.open(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
             V_.write_matrix(file);
@@ -125,6 +125,7 @@ void RAISRTrainer::train(
     const std::vector<std::filesystem::path>& images,
     const std::filesystem::path& path_q,
     const std::filesystem::path& path_v,
+    const std::filesystem::path& path_o,
     int32_t num_threads,
     int32_t max_images)
 {
@@ -138,7 +139,7 @@ void RAISRTrainer::train(
     sharedContext->H_.clear_matrix();
     sharedContext->Q_.clear_matrix();
     sharedContext->V_.clear_matrix();
-    gaussian2d(RAISRParam::GradientSize, &sharedContext->weights_(0, 0), 2.0);
+    gaussian2d(RAISRParam::GradientSize, &sharedContext->weights_(0, 0), RAISRParam::Sigma);
 
     if(!path_q.empty()){
         std::ifstream file(path_q.c_str(), std::ios::binary);
@@ -155,10 +156,27 @@ void RAISRTrainer::train(
         sharedContext->V_.read_matrix(file);
     }
 
-    sharedContext->model_directory_ = std::filesystem::current_path();
-    sharedContext->model_directory_.append("filters");
-    if(!std::filesystem::exists(sharedContext->model_directory_)) {
-        std::filesystem::create_directory(sharedContext->model_directory_);
+    if(!path_o.empty()){
+        sharedContext->model_name_ = path_o;
+    } else {
+        sharedContext->model_name_ = std::filesystem::current_path();
+        sharedContext->model_name_.append("filters");
+        time_t t = std::time(nullptr);
+#ifdef _MSC_VER
+        struct tm now;
+        localtime_s(&now, &t);
+#else
+        struct tm now = *std::localtime(&t);
+#endif
+        now.tm_year += 1900;
+        sharedContext->model_name_.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}{5:02d}",
+                                                      now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec));
+    }
+    {
+        std::filesystem::path directory = sharedContext->model_name_.parent_path();
+        if(!std::filesystem::exists(directory)) {
+            std::filesystem::create_directory(directory);
+        }
     }
 
     std::vector<std::thread> threads;
@@ -173,26 +191,16 @@ void RAISRTrainer::train(
 
     solve(*sharedContext);
     {
-        std::filesystem::path filepath = sharedContext->model_directory_;
-        time_t t = std::time(nullptr);
-#ifdef _MSC_VER
-        struct tm now;
-        localtime_s(&now, &t);
-#else
-        struct tm now = *std::localtime(&t);
-#endif
-        now.tm_year += 1900;
-        filepath.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}{5:02d}.bin",
-                                    now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec));
+        std::string filepath = sharedContext->model_name_.string();
+        filepath.append(".bin");
         std::ofstream file(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
             sharedContext->H_.write_matrix(file);
             file.close();
         }
 
-        filepath = sharedContext->model_directory_;
-        filepath.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}{5:02d}.json",
-                                    now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec));
+        filepath = sharedContext->model_name_.string();
+        filepath.append(".json");
         file.open(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
             file << "{\"filter\":[\n";
@@ -358,7 +366,7 @@ void RAISRTrainer::copy_examples(SharedContext& shared)
 
     for(int32_t i = 0; i < (RAISRParam::PatchSize2); ++i) {
         int32_t i0 = i % RAISRParam::PatchSize;
-        int32_t i1 = static_cast<int32_t>(floor(i / RAISRParam::PatchSize));
+        int32_t i1 = (i / RAISRParam::PatchSize);
         int32_t j = RAISRParam::PatchSize2 - RAISRParam::PatchSize + i1 - RAISRParam::PatchSize * i0;
         rotate(j, i) = 1;
         int32_t k = RAISRParam::PatchSize * (i1 + 1) - i0 - 1;
@@ -401,8 +409,8 @@ void RAISRTrainer::copy_examples(SharedContext& shared)
                         const MatrixParamSize2& Q = *shared.Q_(angle, strength, coherence, pixeltype);
                         const VectorParamSize2& V = *shared.V_(angle, strength, coherence, pixeltype);
 
-                        MatrixParamSize2& QE = *QExt(angle, strength, coherence, pixeltype);
-                        VectorParamSize2& VE = *VExt(angle, strength, coherence, pixeltype);
+                        MatrixParamSize2& QE = *QExt(newangle, strength, coherence, pixeltype);
+                        VectorParamSize2& VE = *VExt(newangle, strength, coherence, pixeltype);
 
                         QE += P[m-1].transpose() * Q * P[m-1];
                         VE += P[m-1].transpose() * V;

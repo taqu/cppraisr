@@ -27,6 +27,7 @@ int main(int argc, char** argv)
     int32_t max_threads = -1;
     std::filesystem::path path_q;
     std::filesystem::path path_v;
+    std::filesystem::path path_o;
     {
         std::optional<int32_t> option_images = args.get<int32_t>("max");
         if(option_images){
@@ -48,8 +49,12 @@ int main(int argc, char** argv)
             path_v = std::filesystem::current_path();
             path_v.append(option_v.value());
         }
-        max_threads = std::max(max_threads, 1);
 
+        std::optional<std::string> option_o = args.get<std::string>("o");
+        if(option_o){
+            path_o = std::filesystem::current_path();
+            path_o.append(option_o.value());
+        }
     }
 
     std::vector<std::filesystem::path> files = parse_directory("train_data",
@@ -64,6 +69,6 @@ int main(int argc, char** argv)
                                                                    return false;
                                                                });
     std::unique_ptr<RAISRTrainer> trainer = std::make_unique<RAISRTrainer>();
-    trainer->train(files, path_q, path_v, max_threads, max_images);
+    trainer->train(files, path_q, path_v, path_o, max_threads, max_images);
     return 0;
 }

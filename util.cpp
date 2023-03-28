@@ -85,15 +85,15 @@ namespace
 
         // grad y
         gy[0] = (m[3] - m[0]) * w[0];
-        gy[1] = (m[6] - m[0]) * w[1] * 0.5;
-        gy[2] = (m[6] - m[3]) * w[2];
+        gy[1] = (m[6] - m[0]) * w[3] * 0.5;
+        gy[2] = (m[6] - m[3]) * w[6];
 
-        gy[3] = (m[4] - m[1]) * w[3];
+        gy[3] = (m[4] - m[1]) * w[1];
         gy[4] = (m[7] - m[1]) * w[4] * 0.5;
-        gy[5] = (m[7] - m[4]) * w[5];
+        gy[5] = (m[7] - m[4]) * w[7];
 
-        gy[6] = (m[5] - m[2]) * w[6];
-        gy[7] = (m[8] - m[2]) * w[7] * 0.5;
+        gy[6] = (m[5] - m[2]) * w[2];
+        gy[7] = (m[8] - m[2]) * w[5] * 0.5;
         gy[8] = (m[8] - m[5]) * w[8];
     }
 
@@ -122,23 +122,23 @@ namespace
 
         // grad y
         gy[0] = (m[4] - m[0]) * w[0];
-        gy[1] = (m[8] - m[0]) * w[1] * 0.5;
-        gy[2] = (m[8] - m[4]) * w[2] * 0.5;
-        gy[3] = (m[12] - m[8]) * w[3];
+        gy[1] = (m[8] - m[0]) * w[4] * 0.5;
+        gy[2] = (m[8] - m[4]) * w[8] * 0.5;
+        gy[3] = (m[12] - m[8]) * w[12];
 
-        gy[4] = (m[5] - m[1]) * w[4];
+        gy[4] = (m[5] - m[1]) * w[1];
         gy[5] = (m[9] - m[1]) * w[5] * 0.5;
-        gy[6] = (m[9] - m[5]) * w[6] * 0.5;
-        gy[7] = (m[13] - m[9]) * w[7];
+        gy[6] = (m[9] - m[5]) * w[9] * 0.5;
+        gy[7] = (m[13] - m[9]) * w[13];
 
-        gy[8] = (m[6] - m[2]) * w[8];
-        gy[9] = (m[10] - m[2]) * w[9] * 0.5;
+        gy[8] = (m[6] - m[2]) * w[2];
+        gy[9] = (m[10] - m[2]) * w[6] * 0.5;
         gy[10] = (m[10] - m[6]) * w[10] * 0.5;
-        gy[11] = (m[14] - m[10]) * w[11];
+        gy[11] = (m[14] - m[10]) * w[14];
 
-        gy[12] = (m[7] - m[3]) * w[12];
-        gy[13] = (m[11] - m[3]) * w[13] * 0.5;
-        gy[14] = (m[11] - m[7]) * w[14] * 0.5;
+        gy[12] = (m[7] - m[3]) * w[3];
+        gy[13] = (m[11] - m[3]) * w[7] * 0.5;
+        gy[14] = (m[11] - m[7]) * w[11] * 0.5;
         gy[15] = (m[15] - m[11]) * w[15];
     }
 
@@ -182,6 +182,43 @@ namespace
                 gy[index] = (m[next] - m[prev]) * w[index] * weight;
             }
         }
+    }
+
+    std::tuple<double, double, double> gradient(int32_t size, const double m[], const double w[])
+    {
+        // grad x
+        double gx = 0.0;
+        double gy = 0.0;
+        double gxy = 0.0;
+        for(int32_t i = 0; i < size; ++i) {
+            int32_t py = i - 1;
+            int32_t ny = i + 1;
+            if(py < 0) {
+                py = 0;
+            }
+            if(size <= ny) {
+                ny = size - 1;
+            }
+
+            for(int32_t j = 0; j < size; ++j) {
+                int32_t px = j - 1;
+                int32_t nx = j + 1;
+
+                if(px < 0) {
+                    px = 0;
+                }
+                if(size <= nx) {
+                    nx = size - 1;
+                }
+                int32_t ic = i * size + j;
+                double x = (m[i * size + nx] - m[i * size + px]);
+                double y = (m[ny * size + j] - m[py * size + j]);
+                gx += x * x * w[ic];
+                gy += y * y * w[ic];
+                gxy += x * y * w[ic];
+            }
+        }
+        return std::make_tuple(gx, gy, gxy);
     }
 
     void conv2(double g[4], int32_t size, const double gx[], const double gy[])
@@ -253,10 +290,10 @@ uint8_t to_uint8(double x)
 {
     x *= 256.0;
     int32_t t = static_cast<int32_t>(x);
-    if(t<0){
+    if(t < 0) {
         return 0;
     }
-    if(256<=t){
+    if(256 <= t) {
         return 255;
     }
     return static_cast<uint8_t>(t);
@@ -271,8 +308,8 @@ std::vector<std::filesystem::path> parse_directory(const char* path, std::functi
             continue;
         }
         if(predicate(entry)) {
-            if(files.capacity()<=files.size()){
-                files.reserve(files.size()+2048);
+            if(files.capacity() <= files.size()) {
+                files.reserve(files.size() + 2048);
             }
             files.push_back(entry.path());
         }
@@ -335,28 +372,13 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     assert(nullptr != gradient_patch);
     assert(nullptr != weights);
     assert(0 < angles);
-    double gx[7 * 7];
-    double gy[7 * 7];
-    switch(gradient_size) {
-    case 3:
-        gradiant3(gx, gy, gradient_patch, weights);
-        break;
-    case 4:
-        gradiant4(gx, gy, gradient_patch, weights);
-        break;
-    case 5:
-    case 7:
-        gradiant(gradient_size, gx, gy, gradient_patch, weights);
-        break;
-    default:
-        assert(false);
-        return std::make_tuple(0, 0, 0);
-    }
-    double g[4];
-    conv2(g, gradient_size*gradient_size, gx, gy);
+    auto [gx, gy, gxy] = gradient(gradient_size, gradient_patch, weights);
+
+    double g[4] = {gx, gxy, gxy, gy};
     double evalues[2];
     double evectors[4];
     solv2x2(evalues, evectors, g);
+
     double theta = atan2(evectors[1], evectors[0]);
     while(theta < 0.0) {
         theta += std::numbers::pi_v<double>;
@@ -387,7 +409,7 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     } else {
         coherence = 1;
     }
-    int32_t angle = static_cast<int32_t>(floor(theta / std::numbers::pi * angles));
+    int32_t angle = static_cast<int32_t>(floor(theta / (2.0*std::numbers::pi) * angles));
     if(angles <= angle) {
         angle = angles - 1;
     }

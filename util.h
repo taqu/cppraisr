@@ -399,8 +399,8 @@ double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, int32_t x, int3
             double l0 = 0;
             double l1 = 0;
             for(int32_t k = 0; k < c; ++k) {
-                l0 += x0[index + k] * x0[index + k];
-                l1 += x1[index + k] * x1[index + k];
+                l0 += static_cast<double>(x0[index + k]) * x0[index + k];
+                l1 += static_cast<double>(x1[index + k]) * x1[index + k];
             }
             l0 = std::sqrt(l0);
             l1 = std::sqrt(l1);
@@ -423,8 +423,8 @@ double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, int32_t x, int3
             double l0 = 0;
             double l1 = 0;
             for(int32_t k = 0; k < c; ++k) {
-                l0 += x0[index + k] * x0[index + k];
-                l1 += x1[index + k] * x1[index + k];
+                l0 += static_cast<double>(x0[index + k]) * x0[index + k];
+                l1 += static_cast<double>(x1[index + k]) * x1[index + k];
             }
             l0 = std::sqrt(l0);
             l1 = std::sqrt(l1);
@@ -433,12 +433,15 @@ double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, int32_t x, int3
             cov += (l0 - avg0) * (l1 - avg1);
         }
     }
-    double sigma0 = d0 * inv_count;
-    double sigma1 = d1 * inv_count;
+    double sigma0 = std::sqrt(d0 * inv_count);
+    double sigma1 = std::sqrt(d1 * inv_count);
     cov *= inv_count;
     static constexpr double C1 = 0.01*255*0.1*255;
     static constexpr double C2 = 0.03*255*0.3*255;
-    return ((2.0*avg0*avg1+C1)*(2.0*cov+C2))/((avg0*avg0+avg1*avg1+C1)*(sigma0*sigma0+sigma1*sigma1+C2));
+
+    double S0 = (2.0*avg0*avg1+C1)*(2.0*cov+C2);
+    double S1 = (avg0*avg0+avg1*avg1+C1)*(sigma0*sigma0+sigma1*sigma1+C2);
+    return S0/S1;
 }
 
 template<class T>

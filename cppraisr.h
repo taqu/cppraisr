@@ -70,15 +70,16 @@ namespace cppraisr
 
 struct RAISRParam
 {
-    inline static constexpr uint8_t R = 1;
-    inline static constexpr uint8_t R2 = R * R;
-    inline static constexpr uint8_t PatchSize = 7;
+    inline static constexpr uint8_t R = 1; //!< Number of pixel patterns for one axis
+    inline static constexpr uint8_t R2 = R * R; //!< Number of pixel patterns
+    inline static constexpr uint8_t PatchSize = 5; //! << Size of patch image
     inline static constexpr uint8_t PatchSize2 = PatchSize * PatchSize;
     inline static constexpr int32_t PatchSize4 = PatchSize2 * PatchSize2;
-    inline static constexpr uint8_t GradientSize = 5;
-    inline static constexpr uint8_t Qangle = 24;
-    inline static constexpr uint8_t Qstrength = 3;
-    inline static constexpr uint8_t Qcoherence = 3;
+    inline static constexpr uint8_t GradientSize = 5; //!< Size of the area on witch calcurate gradients
+    inline static constexpr uint8_t Qangle = 24; //!< Resolution of angle patterns
+    inline static constexpr uint8_t Qstrength = 3; //!< Resolution of strength
+    inline static constexpr uint8_t Qcoherence = 3; //!< Resolution of coherence
+    inline static constexpr double Sigma = 1.414;
 };
 
 class RAISRTrainer
@@ -97,6 +98,7 @@ public:
         const std::vector<std::filesystem::path>& images,
         const std::filesystem::path& path_q,
         const std::filesystem::path& path_v,
+        const std::filesystem::path& path_o,
         int32_t num_threads = 4,
         int32_t max_images = 2147483647);
 
@@ -126,7 +128,7 @@ private:
         ConjugateSet Q_;
         FilterSet V_;
         FilterSet H_;
-        std::filesystem::path model_directory_;
+        std::filesystem::path model_name_;
     };
 
     struct LocalContext

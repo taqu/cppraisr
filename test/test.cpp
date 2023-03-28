@@ -131,13 +131,18 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
     ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize> gradient_patch;
     ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize> weights;
 
-    gaussian2d(RAISRParam::GradientSize, &weights(0, 0), 2.0);
+    gaussian2d(RAISRParam::GradientSize, &weights(0, 0), RAISRParam::Sigma);
     std::filesystem::path result_directory = std::filesystem::current_path();
     result_directory.append("result");
     if(!std::filesystem::exists(result_directory)) {
         std::filesystem::create_directory(result_directory);
     }
 
+    double ssim = 0;
+    std::ofstream ssim_file;
+    if(measure_quality){
+        ssim_file.open("ssim.txt", std::ios::binary);
+    }
     int32_t image_count = 0;
     uint8_t margin = RAISRParam::PatchSize >> 1;
     for(size_t count = 0; count < images.size(); ++count) {
@@ -162,8 +167,8 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
             dw = original.w();
             dh = original.h();
         } else {
-            dw = original.w() >> 1;
-            dh = original.h() >> 1;
+            dw = original.w() << 1;
+            dh = original.h() << 1;
         }
         Image<stbi_uc> upscaled(dw, dh, original.c());
         {
@@ -211,7 +216,7 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
                 double pixelHR = 0.0;
                 for(int32_t y = 0; y < RAISRParam::PatchSize; ++y) {
                     for(int32_t x = 0; x < RAISRParam::PatchSize; ++x) {
-                        pixelHR += patch_image(x, y) * h(y, x);
+                        pixelHR += patch_image(x, y) * h(y*RAISRParam::PatchSize+x,0);
                     }
                 }
                 upscaled(j, i, 0) = to_uint8(pixelHR);
@@ -227,8 +232,22 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
             stbi_write_png((const char*)filepath.u8string().c_str(), upscaled.w(), upscaled.h(), upscaled.c(), &upscaled(0, 0, 0), sizeof(stbi_uc) * upscaled.w() * upscaled.c());
         }
 
+        if(measure_quality){
+            double s = cppraisr::ssim(upscaled.w(), upscaled.h(), upscaled.c(), RAISRParam::PatchSize, &upscaled(0,0,0), &original(0,0,0));
+            ssim += s;
+            if(ssim_file.is_open()){
+                ssim_file << "[" << image_count << "] " << s << std::endl;
+            }
+        }
         ++image_count;
     } // for(size_t i
+    if(measure_quality) {
+        ssim /= image_count;
+        std::cout << "MSSIM: " << ssim << std::endl;
+        if(ssim_file.is_open()) {
+            ssim_file << "\nMSSIM: " << ssim << std::endl;
+        }
+    }
 }
 
 void print_help()
@@ -238,6 +257,7 @@ void print_help()
     std::cout << "\t-help\tshow this help" << std::endl;
     std::cout << "\t-f\ta filter to use" << std::endl;
     std::cout << "\t-max\tmax number of testing images" << std::endl;
+    std::cout << "\t-q\tswitch to quality testing mode, measure the avarage of each MSSIMs." << std::endl;
 }
 
 int main(int argc, char** argv)
