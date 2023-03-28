@@ -233,6 +233,11 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
 
 void print_help()
 {
+    std::cout << "usage: test [-help] [-f Filter] [-max Max Images] [-q]" << std::endl;
+    std::cout << "arguments:" << std::endl;
+    std::cout << "\t-help\tshow this help" << std::endl;
+    std::cout << "\t-f\ta filter to use" << std::endl;
+    std::cout << "\t-max\tmax number of testing images" << std::endl;
 }
 
 int main(int argc, char** argv)

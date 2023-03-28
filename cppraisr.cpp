@@ -121,7 +121,12 @@ RAISRTrainer::~RAISRTrainer()
 {
 }
 
-void RAISRTrainer::train(const std::vector<std::filesystem::path>& images, int32_t num_threads, int32_t max_images)
+void RAISRTrainer::train(
+    const std::vector<std::filesystem::path>& images,
+    const std::filesystem::path& path_q,
+    const std::filesystem::path& path_v,
+    int32_t num_threads,
+    int32_t max_images)
 {
     int32_t hardware_threads = static_cast<int32_t>(std::thread::hardware_concurrency());
     num_threads = std::clamp(num_threads, 1, hardware_threads);
@@ -134,6 +139,21 @@ void RAISRTrainer::train(const std::vector<std::filesystem::path>& images, int32
     sharedContext->Q_.clear_matrix();
     sharedContext->V_.clear_matrix();
     gaussian2d(RAISRParam::GradientSize, &sharedContext->weights_(0, 0), 2.0);
+
+    if(!path_q.empty()){
+        std::ifstream file(path_q.c_str(), std::ios::binary);
+        if(!file.is_open()){
+            return;
+        }
+        sharedContext->Q_.read_matrix(file);
+    }
+    if(!path_v.empty()){
+        std::ifstream file(path_v.c_str(), std::ios::binary);
+        if(!file.is_open()){
+            return;
+        }
+        sharedContext->V_.read_matrix(file);
+    }
 
     sharedContext->model_directory_ = std::filesystem::current_path();
     sharedContext->model_directory_.append("filters");

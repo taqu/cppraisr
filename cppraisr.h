@@ -93,7 +93,12 @@ public:
     RAISRTrainer();
     ~RAISRTrainer();
 
-    void train(const std::vector<std::filesystem::path>& images, int32_t num_threads = 4, int32_t max_images = 2147483647);
+    void train(
+        const std::vector<std::filesystem::path>& images,
+        const std::filesystem::path& path_q,
+        const std::filesystem::path& path_v,
+        int32_t num_threads = 4,
+        int32_t max_images = 2147483647);
 
 private:
     RAISRTrainer(const RAISRTrainer&) = delete;

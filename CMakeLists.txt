@@ -22,7 +22,7 @@ set_target_properties(WINMMLIB PROPERTIES IMPORTED_LOCATION "winmm.lib")
 set(HEADERS
     ${PROJECT_ROOT}/cppraisr.h
     ${PROJECT_ROOT}/util.h
-    ${THIRDPARTY_ROOT}/flags/flags.h
+    ${THIRDPARTY_ROOT}/flags/include/flags.h
     ${THIRDPARTY_ROOT}/stb/stb_image.h
     ${THIRDPARTY_ROOT}/stb/stb_image_write.h
     ${THIRDPARTY_ROOT}/stb/stb_image_resize.h)

@@ -388,7 +388,72 @@ void gaussian2d(int32_t size, double* w, double sigma);
 void solv2x2(double evalues[2], double evectors[4], const double m[4]);
 std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const double* gradient_patch, const double* weights, int32_t angles);
 
-double ssim(int32_t size, const double*);
+template<class T>
+double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, int32_t x, int32_t y, const T* x0, const T* x1)
+{
+    double avg0 = 0.0;
+    double avg1 = 0.0;
+    for(int32_t i = 0; i < patch_size; ++i) {
+        for(int32_t j = 0; j < patch_size; ++j) {
+            int32_t index = ((y + i) * w + x + j) * c;
+            double l0 = 0;
+            double l1 = 0;
+            for(int32_t k = 0; k < c; ++k) {
+                l0 += x0[index + k] * x0[index + k];
+                l1 += x1[index + k] * x1[index + k];
+            }
+            l0 = std::sqrt(l0);
+            l1 = std::sqrt(l1);
+            avg0 += l0;
+            avg1 += l1;
+        }
+    }
+
+    double count = patch_size * patch_size;
+    double inv_count = 1.0 / count;
+    avg0 *= inv_count;
+    avg1 *= inv_count;
+
+    double d0 = 0;
+    double d1 = 0;
+    double cov = 0;
+    for(int32_t i = 0; i < patch_size; ++i) {
+        for(int32_t j = 0; j < patch_size; ++j) {
+            int32_t index = ((y + i) * w + x + j) * c;
+            double l0 = 0;
+            double l1 = 0;
+            for(int32_t k = 0; k < c; ++k) {
+                l0 += x0[index + k] * x0[index + k];
+                l1 += x1[index + k] * x1[index + k];
+            }
+            l0 = std::sqrt(l0);
+            l1 = std::sqrt(l1);
+            d0 += (l0 - avg0) * (l0 - avg0);
+            d1 += (l1 - avg1) * (l1 - avg1);
+            cov += (l0 - avg0) * (l1 - avg1);
+        }
+    }
+    double sigma0 = d0 * inv_count;
+    double sigma1 = d1 * inv_count;
+    cov *= inv_count;
+    static constexpr double C1 = 0.01*255*0.1*255;
+    static constexpr double C2 = 0.03*255*0.3*255;
+    return ((2.0*avg0*avg1+C1)*(2.0*cov+C2))/((avg0*avg0+avg1*avg1+C1)*(sigma0*sigma0+sigma1*sigma1+C2));
+}
+
+template<class T>
+double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, const T* x0, const T* x1)
+{
+    double total = 0;
+    int32_t count = 0;
+    for(int32_t i=0; i<(h-patch_size); i+=patch_size){
+        for(int32_t j=0; j<(w-patch_size); j+=patch_size){
+            total += ssim<T>(w, h, c, patch_size, j, i, x0, x1);
+            ++count;
+        }
+    }
+    return total/count;
+}
 
 } // namespace cppraisr
 #endif // INC_CPPRAISR_UTIL_H_

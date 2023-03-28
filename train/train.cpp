@@ -5,6 +5,13 @@
 
 void print_help()
 {
+    std::cout << "usage: train [-help] [-q QMatrix] [-v VVector] [-max Max Images] [-threads Number of Threads]" << std::endl;
+    std::cout << "arguments:" << std::endl;
+    std::cout << "\t-help\tshow this help" << std::endl;
+    std::cout << "\t-q\tcontinue to train Q matrix from this file" << std::endl;
+    std::cout << "\t-v\tcontinue to train V vector from this file" << std::endl;
+    std::cout << "\t-max\tmax number of training images" << std::endl;
+    std::cout << "\t-threads\tnumber of threads to use" << std::endl;
 }
 
 int main(int argc, char** argv)
@@ -18,6 +25,8 @@ int main(int argc, char** argv)
 
     int32_t max_images = 2147483647;
     int32_t max_threads = -1;
+    std::filesystem::path path_q;
+    std::filesystem::path path_v;
     {
         std::optional<int32_t> option_images = args.get<int32_t>("max");
         if(option_images){
@@ -28,6 +37,19 @@ int main(int argc, char** argv)
             max_threads = option_threads.value();
         }
         max_threads = std::max(max_threads, 1);
+
+        std::optional<std::string> option_q = args.get<std::string>("q");
+        if(option_q){
+            path_q = std::filesystem::current_path();
+            path_q.append(option_q.value());
+        }
+        std::optional<std::string> option_v = args.get<std::string>("v");
+        if(option_v){
+            path_v = std::filesystem::current_path();
+            path_v.append(option_v.value());
+        }
+        max_threads = std::max(max_threads, 1);
+
     }
 
     std::vector<std::filesystem::path> files = parse_directory("train_data",
@@ -42,6 +64,6 @@ int main(int argc, char** argv)
                                                                    return false;
                                                                });
     std::unique_ptr<RAISRTrainer> trainer = std::make_unique<RAISRTrainer>();
-    trainer->train(files, max_threads, max_images);
+    trainer->train(files, path_q, path_v, max_threads, max_images);
     return 0;
 }
