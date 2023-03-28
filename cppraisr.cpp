@@ -55,7 +55,6 @@ For more information, please refer to <http://unlicense.org>
 #include "util.h"
 #include <cstdlib>
 #include <filesystem>
-#include <format>
 #include <fstream>
 #include <iomanip>
 #include <iostream>

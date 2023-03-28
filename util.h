@@ -414,7 +414,7 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
  * @brief Calc SSIM of a patch image
  */
 template<class T>
-double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, int32_t x, int32_t y, const T* x0, const T* x1)
+double ssim(int32_t w, int32_t,int32_t c, int32_t patch_size, int32_t x, int32_t y, const T* x0, const T* x1)
 {
     double avg0 = 0.0;
     double avg1 = 0.0;
@@ -469,6 +469,9 @@ double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, int32_t x, int3
     return S0/S1;
 }
 
+/**
+ * @brief Calc MSSIM of a image
+ */
 template<class T>
 double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, const T* x0, const T* x1)
 {
@@ -485,3 +488,4 @@ double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, const T* x0, co
 
 } // namespace cppraisr
 #endif // INC_CPPRAISR_UTIL_H_
+
