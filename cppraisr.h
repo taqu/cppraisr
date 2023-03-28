@@ -57,11 +57,9 @@ For more information, please refer to <http://unlicense.org>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
-#include <memory>
 #include <mutex>
 #include <optional>
 #include <stb/stb_image.h>
-#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -75,11 +73,11 @@ struct RAISRParam
     inline static constexpr uint8_t PatchSize = 5; //! << Size of patch image
     inline static constexpr uint8_t PatchSize2 = PatchSize * PatchSize;
     inline static constexpr int32_t PatchSize4 = PatchSize2 * PatchSize2;
-    inline static constexpr uint8_t GradientSize = 5; //!< Size of the area on witch calcurate gradients
+    inline static constexpr uint8_t GradientSize = 5; //!< Size of the area on witch calculate gradients
     inline static constexpr uint8_t Qangle = 24; //!< Resolution of angle patterns
     inline static constexpr uint8_t Qstrength = 3; //!< Resolution of strength
     inline static constexpr uint8_t Qcoherence = 3; //!< Resolution of coherence
-    inline static constexpr double Sigma = 1.414;
+    inline static constexpr double Sigma = 1.414; //!< Sigma of gaussian for weights matrix
 };
 
 class RAISRTrainer

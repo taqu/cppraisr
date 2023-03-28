@@ -53,21 +53,21 @@ For more information, please refer to <http://unlicense.org>
 // clang-format on
 #include "util.h"
 #include <cassert>
+#include <numbers>
 
 namespace cppraisr
 {
 namespace
 {
-    bool is_equal(double x0, double x1, double torelance = 1.0e-10)
-    {
-        return std::abs(x0 - x1) < torelance;
-    }
-
+    /**
+     * @brief Check zero
+     */
     bool is_zero(double x, double torelance = 1.0e-10)
     {
         return std::abs(x) < torelance;
     }
 
+    #if 0
     void gradiant3(double gx[9], double gy[9], const double m[9], const double w[9])
     {
         // grad x
@@ -141,52 +141,13 @@ namespace
         gy[14] = (m[11] - m[7]) * w[11] * 0.5;
         gy[15] = (m[15] - m[11]) * w[15];
     }
+  #endif
 
-    void gradiant(int32_t size, double gx[], double gy[], const double m[], const double w[])
-    {
-        // grad x
-        for(int32_t i = 0; i < size; ++i) {
-            for(int32_t j = 0; j < size; ++j) {
-                double weight = 0.5;
-                int32_t prev = j - 1;
-                int32_t next = j + 1;
-                if(prev < 0) {
-                    weight = 1.0;
-                    prev = 0;
-                }
-                if(size <= next) {
-                    weight = 1.0f;
-                    next = size - 1;
-                }
-                int32_t index = i * size + j;
-                gx[index] = (m[next] - m[prev]) * w[index] * weight;
-            }
-        }
-
-        // grad y
-        for(int32_t i = 0; i < size; ++i) {
-            double weight = 0.5;
-            int32_t prev = i - 1;
-            int32_t next = i + 1;
-            if(prev < 0) {
-                weight = 1.0;
-                prev = 0;
-            }
-            if(size <= next) {
-                weight = 1.0f;
-                next = size - 1;
-            }
-
-            for(int32_t j = 0; j < size; ++j) {
-                int32_t index = i * size + j;
-                gy[index] = (m[next] - m[prev]) * w[index] * weight;
-            }
-        }
-    }
-
+    /**
+     * @brief Calc convolutions of gradients
+     */
     std::tuple<double, double, double> gradient(int32_t size, const double m[], const double w[])
     {
-        // grad x
         double gx = 0.0;
         double gy = 0.0;
         double gxy = 0.0;
@@ -220,7 +181,7 @@ namespace
         }
         return std::make_tuple(gx, gy, gxy);
     }
-
+#if 0
     void conv2(double g[4], int32_t size, const double gx[], const double gy[])
     {
         double gxgx = 0.0;
@@ -236,50 +197,8 @@ namespace
         g[2] = gxgy;
         g[3] = gygy;
     }
+    #endif
 } // namespace
-
-PCG32::PCG32()
-    : state_{0x853C49E6748FEA9BULL}
-{
-}
-
-PCG32::~PCG32()
-{
-}
-
-void PCG32::srand(uint64_t seed)
-{
-    do {
-        state_ = Increment + seed;
-    } while(0 == state_);
-    rand();
-}
-
-namespace
-{
-    inline uint32_t rotr32(uint32_t x, uint32_t r)
-    {
-        return (x >> r) | (x << ((~r + 1) & 31U));
-    }
-} // namespace
-
-uint32_t PCG32::rand()
-{
-    uint64_t x = state_;
-    uint32_t count = static_cast<uint32_t>(x >> 59);
-    state_ = x * Multiplier + Increment;
-    x ^= x >> 18;
-    return rotr32(static_cast<uint32_t>(x >> 27), count);
-}
-
-float PCG32::frand()
-{
-    uint32_t x = rand();
-    static const uint32_t m0 = 0x3F800000U;
-    static const uint32_t m1 = 0x007FFFFFU;
-    x = m0 | (x & m1);
-    return (*(float*)&x) - 1.000000000f;
-}
 
 double to_double(uint8_t x)
 {
@@ -372,6 +291,8 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     assert(nullptr != gradient_patch);
     assert(nullptr != weights);
     assert(0 < angles);
+
+    // Calc eigen values and eigen vectors of gradients
     auto [gx, gy, gxy] = gradient(gradient_size, gradient_patch, weights);
 
     double g[4] = {gx, gxy, gxy, gy};
@@ -379,17 +300,18 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     double evectors[4];
     solv2x2(evalues, evectors, g);
 
+    // Calc angle, strength, coherence
     double theta = atan2(evectors[1], evectors[0]);
     while(theta < 0.0) {
         theta += std::numbers::pi_v<double>;
     }
-    double lamda0 = sqrt(evalues[0]);
-    double lamda1 = sqrt(evalues[1]);
+    const double lambda0 = sqrt(evalues[0]);
+    const double lambda1 = sqrt(evalues[1]);
     double u;
-    if(is_zero(lamda0) && is_zero(lamda1)) {
+    if(is_zero(lambda0) && is_zero(lambda1)) {
         u = 0.0;
     } else {
-        u = (lamda0 - lamda1) / (lamda0 + lamda1);
+        u = (lambda0 - lambda1) / (lambda0 + lambda1);
     }
     double lamda = evalues[0];
     int32_t strength;
@@ -409,11 +331,10 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     } else {
         coherence = 1;
     }
-    int32_t angle = static_cast<int32_t>(floor(theta / (2.0*std::numbers::pi) * angles));
+    int32_t angle = static_cast<int32_t>(floor(theta / (2.0 * std::numbers::pi) * angles));
     if(angles <= angle) {
         angle = angles - 1;
     }
     return std::make_tuple(angle, strength, coherence);
 }
-
 } // namespace cppraisr

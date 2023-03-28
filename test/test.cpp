@@ -55,7 +55,7 @@ For more information, please refer to <http://unlicense.org>
 #include "util.h"
 #include <filesystem>
 #include <flags/include/flags.h>
-#include <format>
+#include <iostream>
 #include <fstream>
 #include <stb/stb_image.h>
 #include <stb/stb_image_resize.h>

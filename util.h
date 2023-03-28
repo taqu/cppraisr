@@ -59,18 +59,17 @@ For more information, please refer to <http://unlicense.org>
 #include <filesystem>
 #include <fstream>
 #include <functional>
-#include <intrin.h>
-#include <iostream>
-#include <memory>
-#include <numbers>
 #include <tuple>
 #include <utility>
-#include <stb/stb_image.h>
 #include <eigen/Eigen/Eigen>
 
 namespace cppraisr
 {
 
+/**
+ * @tparam  T ... type
+ * @brief Swap values
+ */
 template<class T>
 void swap(T& x0, T& x1)
 {
@@ -79,21 +78,10 @@ void swap(T& x0, T& x1)
     x1 = t;
 }
 
-class PCG32
-{
-public:
-    PCG32();
-    ~PCG32();
-    void srand(uint64_t seed);
-    uint32_t rand();
-    float frand();
-
-private:
-    inline static constexpr uint64_t Increment = 0xDA3E39CB94B95BDBULL;
-    inline static constexpr uint64_t Multiplier = 0x5851F42D4C957F2DULL;
-    uint64_t state_;
-};
-
+/**
+ * @tparam T ... type
+ * @brief Simple image class
+ */
 template<class T>
 class Image
 {
@@ -129,9 +117,9 @@ public:
 private:
     Image(const Image&) = delete;
     Image& operator=(const Image&) = delete;
-    int32_t width_ = 0;
-    int32_t height_ = 0;
-    int32_t channels_ = 0;
+    int32_t width_;
+    int32_t height_;
+    int32_t channels_;
     T* pixels_ = nullptr;
     std::function<void(void*)> deleter_;
 };
@@ -201,6 +189,12 @@ void Image<T>::swap(Image<T>& other)
     deleter_.swap(other.deleter_);
 }
 
+/**
+ * @tparam T ... type
+ * @tparam W ... width
+ * @tparam H ... height
+ * @brief Simple static size image class
+ */
 template<class T, int32_t W, int32_t H>
 class ImageStatic
 {
@@ -272,6 +266,10 @@ void ImageStatic<T, W, H>::read(std::istream& is)
     is.read((char*)pixels_, size);
 }
 
+/**
+ * @tparam T ... type
+ * @brief 5D array class
+ */
 template<class T, int32_t N0, int32_t N1, int32_t N2, int32_t N3, int32_t N4>
 class Array5d
 {
@@ -294,25 +292,25 @@ public:
 
     const T& operator()(int32_t i0, int32_t i1, int32_t i2, int32_t i3, int32_t i4) const
     {
-        int32_t index = i0 * N1 * N2 * N3 * N4 + i1 * N2 * N3 * N4 + i2 * N3 * N4 + i3 * N4 + i4;
+        int32_t index = ((((i0 * N1) + i1)*N2 + i2)*N3 + i3)*N4 + i4;
         return items_[index];
     }
 
     T& operator()(int32_t i0, int32_t i1, int32_t i2, int32_t i3, int32_t i4)
     {
-        int32_t index = i0 * N1 * N2 * N3 * N4 + i1 * N2 * N3 * N4 + i2 * N3 * N4 + i3 * N4 + i4;
+        int32_t index = ((((i0 * N1) + i1)*N2 + i2)*N3 + i3)*N4 + i4;
         return items_[index];
     }
 
     const T* operator()(int32_t i0, int32_t i1, int32_t i2, int32_t i3) const
     {
-        int32_t index = i0 * N1 * N2 * N3 * N4 + i1 * N2 * N3 * N4 + i2 * N3 * N4 + i3 * N4;
+        int32_t index = ((((i0 * N1) + i1)*N2 + i2)*N3 + i3)*N4;
         return &items_[index];
     }
 
     T* operator()(int32_t i0, int32_t i1, int32_t i2, int32_t i3)
     {
-        int32_t index = i0 * N1 * N2 * N3 * N4 + i1 * N2 * N3 * N4 + i2 * N3 * N4 + i3 * N4;
+        int32_t index = ((((i0 * N1) + i1)*N2 + i2)*N3 + i3)*N4;
         return &items_[index];
     }
 
@@ -380,14 +378,41 @@ void Array5d<T, N0, N1, N2, N3, N4>::read_matrix(std::istream& is)
     }
 }
 
+/**
+ * @brief Convert [0 255] integer to [0 1] float
+ */
 double to_double(uint8_t x);
+/**
+ * @brief Convert [0 1] float to [0 255] integer
+ */
 uint8_t to_uint8(double x);
 
+/**
+ * @brief Parse a directory recursively and gather file paths
+ * @return gathered paths
+ * @param path ... directory to parse
+ * @param predicate ... a function of returning desirable condition
+ */
 std::vector<std::filesystem::path> parse_directory(const char* path, std::function<bool(const std::filesystem::directory_entry&)> predicate);
+
+/**
+ * @brief Generate a Gaussian filter
+ */
 void gaussian2d(int32_t size, double* w, double sigma);
+
+/**
+ * @brief Solve 2x2 equations and get eigen values, eigen vectors
+ */
 void solv2x2(double evalues[2], double evectors[4], const double m[4]);
+
+/**
+ * @brief Hash function for RAISR
+ */
 std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const double* gradient_patch, const double* weights, int32_t angles);
 
+/**
+ * @brief Calc SSIM of a patch image
+ */
 template<class T>
 double ssim(int32_t w, int32_t h, int32_t c, int32_t patch_size, int32_t x, int32_t y, const T* x0, const T* x1)
 {
