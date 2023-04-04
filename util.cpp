@@ -67,7 +67,7 @@ namespace
         return std::abs(x) < torelance;
     }
 
-    #if 0
+#if 0
     void gradiant3(double gx[9], double gy[9], const double m[9], const double w[9])
     {
         // grad x
@@ -141,7 +141,7 @@ namespace
         gy[14] = (m[11] - m[7]) * w[11] * 0.5;
         gy[15] = (m[15] - m[11]) * w[15];
     }
-  #endif
+#endif
 
     /**
      * @brief Calc convolutions of gradients
@@ -154,29 +154,34 @@ namespace
         for(int32_t i = 0; i < size; ++i) {
             int32_t py = i - 1;
             int32_t ny = i + 1;
+            double wy = 1.0;
             if(py < 0) {
                 py = 0;
+                wy = 1.0;
             }
             if(size <= ny) {
                 ny = size - 1;
+                wy = 1.0;
             }
 
             for(int32_t j = 0; j < size; ++j) {
                 int32_t px = j - 1;
                 int32_t nx = j + 1;
-
+                double wx = 1.0;
                 if(px < 0) {
                     px = 0;
+                    wx = 1.0;
                 }
                 if(size <= nx) {
                     nx = size - 1;
+                    wx = 1.0;
                 }
                 int32_t ic = i * size + j;
                 double x = (m[i * size + nx] - m[i * size + px]);
                 double y = (m[ny * size + j] - m[py * size + j]);
-                gx += x * x * w[ic];
-                gy += y * y * w[ic];
-                gxy += x * y * w[ic];
+                gx += x * x * wx*w[ic];
+                gy += y * y * wx*w[ic];
+                gxy += x * y * wx*wy*w[ic];
             }
         }
         return std::make_tuple(gx, gy, gxy);
@@ -197,7 +202,7 @@ namespace
         g[2] = gxgy;
         g[3] = gygy;
     }
-    #endif
+#endif
 } // namespace
 
 double to_double(uint8_t x)

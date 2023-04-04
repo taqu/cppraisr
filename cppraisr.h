@@ -80,15 +80,46 @@ struct RAISRParam
     inline static constexpr double Sigma = 1.414; //!< Sigma of gaussian for weights matrix
 };
 
+/**
+ *
+ */
+class FilterSet
+{
+public:
+    using FilterType = Eigen::Matrix<double, RAISRParam::PatchSize2, 1>;
+    inline static constexpr int32_t Count = RAISRParam::Qangle*RAISRParam::Qstrength*RAISRParam::Qcoherence*RAISRParam::R;
+
+    FilterSet();
+    ~FilterSet();
+    const FilterType& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const;
+    FilterType& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type);
+    void write(std::ostream& os);
+    void read(std::istream& is);
+private:
+    FilterSet(const FilterSet&) = delete;
+    FilterSet& operator=(const FilterSet&) = delete;
+    FilterType* filters_;
+};
+
+class MatrixSet
+{
+public:
+    using MatrixType = Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>;
+    inline static constexpr int32_t Count = RAISRParam::Qangle*RAISRParam::Qstrength*RAISRParam::Qcoherence*RAISRParam::R;
+
+    MatrixSet();
+    ~MatrixSet();
+    const MatrixType& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const;
+    MatrixType& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type);
+private:
+    MatrixSet(const MatrixSet&) = delete;
+    MatrixSet& operator=(const MatrixSet&) = delete;
+    MatrixType* matrices_;
+};
+
 class RAISRTrainer
 {
 public:
-    using VectorParamSize2 = Eigen::Matrix<double, RAISRParam::PatchSize2, 1>;
-    using MatrixParamSize2 = Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>;
-
-    using FilterSet = Array5d<VectorParamSize2, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
-    using ConjugateSet = Array5d<MatrixParamSize2, RAISRParam::Qangle, RAISRParam::Qstrength, RAISRParam::Qcoherence, RAISRParam::R2, 1>;
-
     RAISRTrainer();
     ~RAISRTrainer();
 
@@ -97,51 +128,26 @@ public:
         const std::filesystem::path& path_q,
         const std::filesystem::path& path_v,
         const std::filesystem::path& path_o,
-        int32_t num_threads = 4,
         int32_t max_images = 2147483647);
 
 private:
     RAISRTrainer(const RAISRTrainer&) = delete;
     RAISRTrainer& operator=(const RAISRTrainer&) = delete;
 
-    using ImagePatch = ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize>;
-    using GradientPatch = ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize>;
-    using ConjugatePatch = ImageStatic<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>;
+    void train(const std::filesystem::path& path);
+    void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original);
+    void copy_examples();
+    void solve();
 
-    struct SharedContext
-    {
-        std::optional<std::tuple<std::filesystem::path, int32_t>> next();
-        void inject(int32_t count, const ConjugateSet& Q, const FilterSet& V);
-
-        const std::vector<std::filesystem::path>* files_ = nullptr;
-        size_t max_images_ = 0;
-        size_t count_ = 0;
-        size_t total_operations_ = 0;
-        bool output_checkpoints_ = false;
-        size_t checkpoint_cycle_ = 100;
-        size_t checkpoint_count_ = 0;
-        std::mutex mutex_;
-
-        GradientPatch weights_;
-        ConjugateSet Q_;
-        FilterSet V_;
-        FilterSet H_;
-        std::filesystem::path model_name_;
-    };
-
-    struct LocalContext
-    {
-        int32_t image_count_;
-        ImagePatch patch_image_;
-        GradientPatch gradient_patch_;
-        ConjugateSet Q_;
-        FilterSet V_;
-    };
-
-    static void train_thread(SharedContext& shared);
-    static void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original, LocalContext& context, SharedContext& shared);
-    void copy_examples(SharedContext& shared);
-    void solve(SharedContext& shared);
+    int32_t max_images_;
+    std::filesystem::path current_;
+    std::filesystem::path model_name_;
+    FilterSet V_;
+    MatrixSet Q_;
+    FilterSet H_;
+    double weights_[RAISRParam::GradientSize*RAISRParam::GradientSize];
+    double patch_image_[RAISRParam::PatchSize*RAISRParam::PatchSize];
+    double gradient_image_[RAISRParam::GradientSize*RAISRParam::GradientSize];
 };
 } // namespace cppraisr
 

@@ -124,14 +124,14 @@ int32_t reflect(int32_t x, int32_t size)
     return x;
 }
 
-void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAISRTrainer::FilterSet& filters, int32_t max_images, bool measure_quality)
+void test(const std::vector<std::filesystem::path>& images, const cppraisr::FilterSet& filters, int32_t max_images, bool measure_quality)
 {
     using namespace cppraisr;
-    ImageStatic<double, RAISRParam::PatchSize, RAISRParam::PatchSize> patch_image;
-    ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize> gradient_patch;
-    ImageStatic<double, RAISRParam::GradientSize, RAISRParam::GradientSize> weights;
+    std::unique_ptr<double> weights(new double[RAISRParam::GradientSize*RAISRParam::GradientSize]);
+    std::unique_ptr<double> patch_image(new double[RAISRParam::PatchSize*RAISRParam::PatchSize]);
+    std::unique_ptr<double> gradient_image(new double[RAISRParam::GradientSize*RAISRParam::GradientSize]);
 
-    gaussian2d(RAISRParam::GradientSize, &weights(0, 0), RAISRParam::Sigma);
+    gaussian2d(RAISRParam::GradientSize, weights.get(), RAISRParam::Sigma);
     std::filesystem::path result_directory = std::filesystem::current_path();
     result_directory.append("result");
     if(!std::filesystem::exists(result_directory)) {
@@ -144,7 +144,6 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
         ssim_file.open("ssim.txt", std::ios::binary);
     }
     int32_t image_count = 0;
-    uint8_t margin = RAISRParam::PatchSize >> 1;
     for(size_t count = 0; count < images.size(); ++count) {
         if(max_images <= count) {
             break;
@@ -192,6 +191,10 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
             }
         }
 
+ #if 1
+        double gaussian[RAISRParam::PatchSize*RAISRParam::PatchSize];
+        gaussian2d(RAISRParam::PatchSize, gaussian, 2.0f);
+
         int32_t half_patch_size = RAISRParam::PatchSize >> 1;
         int32_t half_gradient_size = RAISRParam::GradientSize >> 1;
         for(int32_t i = 0; i < upscaled.h(); ++i) {
@@ -200,29 +203,29 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::RAIS
                     for(int32_t x = -half_patch_size; x <= half_patch_size; ++x) {
                         int32_t tx = reflect(x + j, upscaled.w());
                         int32_t ty = reflect(y + i, upscaled.h());
-                        patch_image(x + half_patch_size, y + half_patch_size) = to_double(upscaled(tx, ty, 0));
+                        patch_image.get()[(y + half_patch_size)*RAISRParam::PatchSize + x + half_patch_size] = to_double(upscaled(tx, ty, 0));
                     }
                 }
                 for(int32_t y = -half_gradient_size; y <= half_gradient_size; ++y) {
                     for(int32_t x = -half_gradient_size; x <= half_gradient_size; ++x) {
                         int32_t tx = reflect(x + j, upscaled.w());
                         int32_t ty = reflect(y + i, upscaled.h());
-                        gradient_patch(x + half_gradient_size, y + half_gradient_size) = to_double(upscaled(tx, ty, 0));
+                        gradient_image.get()[(y + half_gradient_size)*RAISRParam::GradientSize + x + half_gradient_size] = to_double(upscaled(tx, ty, 0));
                     }
                 }
-                auto [angle, strength, coherence] = hashkey(RAISRParam::GradientSize, &gradient_patch(0, 0), &weights(0, 0), RAISRParam::Qangle);
+                auto [angle, strength, coherence] = hashkey(RAISRParam::GradientSize, gradient_image.get(), weights.get(), RAISRParam::Qangle);
                 int32_t pixeltype = (i % RAISRParam::R) * RAISRParam::R + (j % RAISRParam::R);
-                const RAISRTrainer::VectorParamSize2& h = *filters(angle, strength, coherence, pixeltype);
+                const FilterSet::FilterType& h = filters(angle, strength, coherence, pixeltype);
                 double pixelHR = 0.0;
                 for(int32_t y = 0; y < RAISRParam::PatchSize; ++y) {
                     for(int32_t x = 0; x < RAISRParam::PatchSize; ++x) {
-                        pixelHR += patch_image(x, y) * h(y*RAISRParam::PatchSize+x,0);
+                        pixelHR += patch_image.get()[y*RAISRParam::PatchSize+x] * h(y*RAISRParam::PatchSize+x,0);
                     }
                 }
                 upscaled(j, i, 0) = to_uint8(pixelHR);
             } // int32_t j = margin
         }     // int32_t i = margin
-
+#endif
         {
             std::filesystem::path filepath = result_directory;
             std::filesystem::path filename = images[count].filename();
@@ -263,7 +266,7 @@ void print_help()
 int main(int argc, char** argv)
 {
     using namespace cppraisr;
-    RAISRTrainer::FilterSet filters;
+    FilterSet filters;
     const flags::args args(argc, argv);
     if(args.get<bool>("help", false)) {
         print_help();
@@ -283,7 +286,7 @@ int main(int argc, char** argv)
         if(!file.is_open()) {
             return 0;
         }
-        filters.read_matrix(file);
+        filters.read(file);
     }
     int32_t max_images = 1000000;
     bool measure_quality = false;

@@ -69,6 +69,6 @@ int main(int argc, char** argv)
                                                                    return false;
                                                                });
     std::unique_ptr<RAISRTrainer> trainer = std::make_unique<RAISRTrainer>();
-    trainer->train(files, path_q, path_v, path_o, max_threads, max_images);
+    trainer->train(files, path_q, path_v, path_o, max_images);
     return 0;
 }

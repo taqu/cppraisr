@@ -54,6 +54,7 @@ For more information, please refer to <http://unlicense.org>
 #include "cppraisr.h"
 #include "util.h"
 #include <cstdlib>
+#include <eigen/unsupported/Eigen/MatrixFunctions>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -64,55 +65,87 @@ For more information, please refer to <http://unlicense.org>
 namespace cppraisr
 {
 
-std::optional<std::tuple<std::filesystem::path, int32_t>> RAISRTrainer::SharedContext::next()
+FilterSet::FilterSet()
+    : filters_(nullptr)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if(max_images_ <= count_) {
-        return std::nullopt;
+    filters_ = new FilterType[Count];
+    for(int32_t i = 0; i < Count; ++i) {
+        filters_[i].setZero();
     }
-    const std::filesystem::path& path = (*files_)[count_];
-    size_t count = count_;
-    ++count_;
-
-    std::u8string p = path.u8string();
-    std::cout << "[" << std::setfill('0') << std::right << std::setw(4) << count_ << '/' << max_images_ << "] " << (char*)p.c_str() << std::endl;
-    return std::make_tuple(path, static_cast<int32_t>(count));
 }
 
-void RAISRTrainer::SharedContext::inject(int32_t count, const ConjugateSet& Q, const FilterSet& V)
+FilterSet::~FilterSet()
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    delete[] filters_;
+    filters_ = nullptr;
+}
 
-    Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>* DQ= Q_(0,0,0,0);
-    const Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>* SQ= Q(0,0,0,0);
-     Eigen::Matrix<double, RAISRParam::PatchSize2, 1>* DV= V_(0,0,0,0);
-     const Eigen::Matrix<double, RAISRParam::PatchSize2, 1>* SV= V(0,0,0,0);
-     int32_t size = Q_.count();
-    for(int32_t i=0; i<size; ++i){
-        DQ[i] += SQ[i];
-        DV[i] += SV[i];
-    }
+const FilterSet::FilterType& FilterSet::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return filters_[index];
+}
 
-    total_operations_ += count;
-    size_t checkpoint_count = checkpoint_count_ + count;
-    if(output_checkpoints_ && checkpoint_cycle_<=(checkpoint_count-checkpoint_count_)){
-        checkpoint_count_ = checkpoint_count;
-        std::string filepath = model_name_.string();
-        filepath.append(std::format("_q_{0:06d}.bin", count));
-        std::ofstream file(filepath.c_str(), std::ios::binary);
-        if(file.is_open()) {
-            Q_.write_matrix(file);
-        }
-        filepath = model_name_.string();
-        filepath.append(std::format("_v_{0:06d}.bin", count));
-        file.open(filepath.c_str(), std::ios::binary);
-        if(file.is_open()) {
-            V_.write_matrix(file);
+FilterSet::FilterType& FilterSet::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type)
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return filters_[index];
+}
+
+void FilterSet::write(std::ostream& os)
+{
+    for(int32_t i = 0; i < Count; ++i) {
+        for(int32_t r = 0; r < filters_[i].rows(); ++r) {
+            for(int32_t c = 0; c < filters_[i].cols(); ++c) {
+                double x = filters_[i](r, c);
+                os.write((const char*)&x, sizeof(x));
+            }
         }
     }
+}
+
+void FilterSet::read(std::istream& is)
+{
+    for(int32_t i = 0; i < Count; ++i) {
+        for(int32_t r = 0; r < filters_[i].rows(); ++r) {
+            for(int32_t c = 0; c < filters_[i].cols(); ++c) {
+                double x = 0;
+                is.read((char*)&x, sizeof(x));
+                filters_[i](r, c) = x;
+            }
+        }
+    }
+}
+
+MatrixSet::MatrixSet()
+    : matrices_(nullptr)
+{
+    matrices_ = new MatrixType[Count];
+    for(int32_t i = 0; i < Count; ++i) {
+        matrices_[i].setZero();
+    }
+}
+
+MatrixSet::~MatrixSet()
+{
+    delete[] matrices_;
+    matrices_ = nullptr;
+}
+
+const MatrixSet::MatrixType& MatrixSet::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return matrices_[index];
+}
+
+MatrixSet::MatrixType& MatrixSet::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type)
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return matrices_[index];
 }
 
 RAISRTrainer::RAISRTrainer()
+    : max_images_(0)
 {
 }
 
@@ -125,41 +158,30 @@ void RAISRTrainer::train(
     const std::filesystem::path& path_q,
     const std::filesystem::path& path_v,
     const std::filesystem::path& path_o,
-    int32_t num_threads,
     int32_t max_images)
 {
-    int32_t hardware_threads = static_cast<int32_t>(std::thread::hardware_concurrency());
-    num_threads = std::clamp(num_threads, 1, hardware_threads);
+    current_ = std::filesystem::current_path();
+    max_images_ = std::min(max_images, static_cast<int32_t>(images.size()));
+    gaussian2d(RAISRParam::GradientSize, weights_, RAISRParam::Sigma);
 
-    std::unique_ptr<SharedContext> sharedContext = std::make_unique<SharedContext>();
-
-    sharedContext->max_images_ = std::min(max_images, static_cast<int32_t>(images.size()));
-    sharedContext->files_ = &images;
-    sharedContext->H_.clear_matrix();
-    sharedContext->Q_.clear_matrix();
-    sharedContext->V_.clear_matrix();
-    gaussian2d(RAISRParam::GradientSize, &sharedContext->weights_(0, 0), RAISRParam::Sigma);
-
-    if(!path_q.empty()){
+    if(!path_q.empty()) {
         std::ifstream file(path_q.c_str(), std::ios::binary);
-        if(!file.is_open()){
+        if(!file.is_open()) {
             return;
         }
-        sharedContext->Q_.read_matrix(file);
     }
-    if(!path_v.empty()){
+    if(!path_v.empty()) {
         std::ifstream file(path_v.c_str(), std::ios::binary);
-        if(!file.is_open()){
+        if(!file.is_open()) {
             return;
         }
-        sharedContext->V_.read_matrix(file);
     }
 
-    if(!path_o.empty()){
-        sharedContext->model_name_ = path_o;
+    if(!path_o.empty()) {
+        model_name_ = path_o;
     } else {
-        sharedContext->model_name_ = std::filesystem::current_path();
-        sharedContext->model_name_.append("filters");
+        model_name_ = std::filesystem::current_path();
+        model_name_.append("filters");
         time_t t = std::time(nullptr);
 #ifdef _MSC_VER
         struct tm now;
@@ -168,37 +190,31 @@ void RAISRTrainer::train(
         struct tm now = *std::localtime(&t);
 #endif
         now.tm_year += 1900;
-        sharedContext->model_name_.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}{5:02d}",
-                                                      now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec));
-    }
-    {
-        std::filesystem::path directory = sharedContext->model_name_.parent_path();
+        model_name_.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}{5:02d}",
+                                       now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec));
+        std::filesystem::path directory = model_name_.parent_path();
         if(!std::filesystem::exists(directory)) {
             std::filesystem::create_directory(directory);
         }
     }
 
-    std::vector<std::thread> threads;
-    for(int32_t i = 0; i < num_threads; ++i) {
-        threads.emplace_back([&sharedContext] {
-            train_thread(*sharedContext);
-        });
-    }
-    for(int32_t i = 0; i < num_threads; ++i) {
-        threads[i].join();
+    for(size_t i = 0; i < max_images_; ++i) {
+        std::u8string path = images[i].u8string();
+        std::cout << "[" << std::setfill('0') << std::right << std::setw(4) << (i + 1) << '/' << std::setfill('0') << std::right << std::setw(4) << images.size() << "] " << (char*)path.c_str() << std::endl;
+        train(images[i]);
     }
 
-    solve(*sharedContext);
+    solve();
     {
-        std::string filepath = sharedContext->model_name_.string();
+        std::string filepath = model_name_.string();
         filepath.append(".bin");
         std::ofstream file(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
-            sharedContext->H_.write_matrix(file);
+            H_.write(file);
             file.close();
         }
 
-        filepath = sharedContext->model_name_.string();
+        filepath = model_name_.string();
         filepath.append(".json");
         file.open(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
@@ -207,9 +223,9 @@ void RAISRTrainer::train(
                 for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
                     for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
                         for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
-                            const VectorParamSize2& filter = *sharedContext->H_(angle, strength, coherence, pixeltype);
-                            for(int32_t i=0; i<filter.rows(); ++i){
-                                double x = filter(i,0);
+                            const FilterSet::FilterType& filter = H_(angle, strength, coherence, pixeltype);
+                            for(int32_t i = 0; i < filter.rows(); ++i) {
+                                double x = filter(i, 0);
                                 file << x << ',';
                             }
                             file << '\n';
@@ -224,67 +240,61 @@ void RAISRTrainer::train(
     }
 }
 
-void RAISRTrainer::train_thread(SharedContext& shared)
+void RAISRTrainer::train(const std::filesystem::path& path)
 {
-    std::unique_ptr<LocalContext> context = std::make_unique<LocalContext>();
-    context->patch_image_.clear();
-    context->gradient_patch_.clear();
-    for(;;) {
-        std::optional<std::tuple<std::filesystem::path, int32_t>> image = shared.next();
-        if(!image) {
-            break;
+    ::memset(patch_image_, 0, sizeof(double) * RAISRParam::PatchSize * RAISRParam::PatchSize);
+    ::memset(gradient_image_, 0, sizeof(double) * RAISRParam::GradientSize * RAISRParam::GradientSize);
+    Image<stbi_uc> original;
+    {
+        std::filesystem::path filepath = current_;
+        filepath.append(path.c_str());
+        int32_t w = 0, h = 0, c = 0;
+        std::u8string u8path = filepath.generic_u8string();
+        stbi_uc* pixels = stbi_load(reinterpret_cast<const char*>(u8path.c_str()), &w, &h, &c, STBI_default);
+        if(nullptr == pixels) {
+            return;
         }
-        Image<stbi_uc> original;
-        context->image_count_ = std::get<1>(image.value());
-        std::u8string path = std::get<0>(image.value()).u8string();
-        {
-            int32_t w = 0, h = 0, c = 0;
-            stbi_uc* pixels = stbi_load(reinterpret_cast<const char*>(path.c_str()), &w, &h, &c, STBI_default);
-            if(nullptr == pixels) {
-                continue;
+        original.reset(w, h, c, pixels, stbi_image_free);
+    }
+
+    if(1 < original.c()) {
+        Image<stbi_uc> grey(original.w(), original.h(), 1);
+        if(!grey) {
+            return;
+        }
+        for(int j = 0; j < original.h(); ++j) {
+            for(int k = 0; k < original.w(); ++k) {
+                stbi_uc r = original(k, j, 0);
+                stbi_uc g = original(k, j, 1);
+                stbi_uc b = original(k, j, 2);
+                grey(k, j, 0) = static_cast<stbi_uc>(0.183f * r + 0.614f * g + 0.062f * b + 16);
             }
-            original.reset(w, h, c, pixels, stbi_image_free);
+        }
+        original.swap(grey);
+    }
+    Image<stbi_uc> upscaledLR(original.w(), original.h(), 1);
+    if(!upscaledLR) {
+        return;
+    }
+    {
+        Image<stbi_uc> tmp(original.w() >> 1, original.h() >> 1, 1);
+        if(!tmp) {
+            return;
+        }
+        int r = stbir_resize_uint8_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(stbi_uc), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
+        if(!r) {
+            return;
         }
 
-        if(1 < original.c()) {
-            Image<stbi_uc> grey(original.w(), original.h(), 1);
-            if(!grey) {
-                continue;
-            }
-            for(int j = 0; j < original.h(); ++j) {
-                for(int k = 0; k < original.w(); ++k) {
-                    stbi_uc r = original(k, j, 0);
-                    stbi_uc g = original(k, j, 1);
-                    stbi_uc b = original(k, j, 2);
-                    grey(k, j, 0) = static_cast<stbi_uc>(0.183f * r + 0.614f * g + 0.062f * b + 16);
-                }
-            }
-            original.swap(grey);
+        r = stbir_resize_uint8_generic(&tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * tmp.c() * sizeof(stbi_uc), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
+        if(!r) {
+            return;
         }
-        Image<stbi_uc> upscaledLR(original.w(), original.h(), 1);
-        if(!upscaledLR) {
-            continue;
-        }
-        {
-            Image<stbi_uc> tmp(original.w() >> 1, original.h() >> 1, 1);
-            if(!tmp) {
-                continue;
-            }
-            int r = stbir_resize_uint8_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(stbi_uc), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_BOX, STBIR_COLORSPACE_LINEAR, nullptr);
-            if(!r) {
-                continue;
-            }
-
-            r = stbir_resize_uint8_generic(&tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * tmp.c() * sizeof(stbi_uc), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
-            if(!r) {
-                continue;
-            }
-        }
-        train_image(upscaledLR, original, *context, shared);
-    } // for(size_t i
+    }
+    train_image(upscaledLR, original);
 }
 
-void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original, LocalContext& context, SharedContext& shared)
+void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original)
 {
     int32_t patch_begin;
     int32_t patch_end;
@@ -311,9 +321,6 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
         margin = (patch_size >> 1);
     }
 
-    context.Q_.clear_matrix();
-    context.V_.clear_matrix();
-
     int32_t hend = upscaledLR.h() < margin ? 0 : upscaledLR.h() - margin;
     int32_t wend = upscaledLR.w() < margin ? 0 : upscaledLR.w() - margin;
     Eigen::Matrix<double, 1, RAISRParam::PatchSize2> A;
@@ -324,32 +331,32 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
         for(int32_t j = margin; j < wend; ++j) {
             for(int32_t y = patch_begin; y <= patch_end; ++y) {
                 for(int32_t x = patch_begin; x <= patch_end; ++x) {
-                    context.patch_image_(x - patch_begin, y - patch_begin) = to_double(upscaledLR(j + x, i + y, 0));
+                    patch_image_[(y - patch_begin) * RAISRParam::PatchSize + x - patch_begin] = to_double(upscaledLR(j + x, i + y, 0));
                 }
             }
             for(int32_t y = gradient_begin; y <= gradient_end; ++y) {
                 for(int32_t x = gradient_begin; x <= gradient_end; ++x) {
-                    context.gradient_patch_(x - gradient_begin, y - gradient_begin) = to_double(upscaledLR(j + x, i + y, 0));
+                    gradient_image_[(y - gradient_begin) * RAISRParam::GradientSize + x - gradient_begin] = to_double(upscaledLR(j + x, i + y, 0));
                 }
             }
 
-            auto [angle, strength, coherence] = hashkey(RAISRParam::GradientSize, &context.gradient_patch_(0, 0), &shared.weights_(0, 0), RAISRParam::Qangle);
+            auto [angle, strength, coherence] = hashkey(RAISRParam::GradientSize, gradient_image_, weights_, RAISRParam::Qangle);
             double pixelHR = to_double(original(j, i, 0));
 
             int32_t pixeltype = ((i - margin) % RAISRParam::R) * RAISRParam::R + ((j - margin) % RAISRParam::R);
 
-            A = Eigen::Map<Eigen::Matrix<double, 1, RAISRParam::PatchSize2>>(&context.patch_image_(0, 0));
+            A = Eigen::Map<Eigen::Matrix<double, 1, RAISRParam::PatchSize2>>(patch_image_);
             ATA = A.transpose() * A;
-            ATb = A.transpose()*pixelHR;
+            ATb = A.transpose() * pixelHR;
 
-            *context.Q_(angle, strength, coherence, pixeltype) += ATA;
-            *context.V_(angle, strength, coherence, pixeltype) += ATb;
+            Q_(angle, strength, coherence, pixeltype) += ATA;
+            V_(angle, strength, coherence, pixeltype) += ATb;
         } // int32_t j = margin
     }     // int32_t i = margin
-    shared.inject(context.image_count_, context.Q_, context.V_);
 }
 
-void RAISRTrainer::copy_examples(SharedContext& shared)
+#if 0
+void RAISRTrainer::copy_examples()
 {
     MatrixParamSize2* P = new MatrixParamSize2[7+4];
     MatrixParamSize2& rotate = P[7];
@@ -374,15 +381,8 @@ void RAISRTrainer::copy_examples(SharedContext& shared)
     for(int32_t i = 1; i < 8; ++i) {
         int32_t i0 = i % 4;
         int32_t i1 = i >> 2;
-        trotate = rotate;
-        tflip = flip;
-
-        for(int32_t j=1; j<i0; ++j){
-            trotate *= rotate;
-        }
-        for(int32_t j=1; j<i1; ++j){
-            tflip *= flip;
-        }
+        trotate = rotate.pow(i0);
+        tflip = flip.pow(i1);
         P[i-1] = tflip*trotate;
     }
     ConjugateSet QExt;
@@ -426,21 +426,28 @@ void RAISRTrainer::copy_examples(SharedContext& shared)
 
     delete[] P;
 }
+#endif
 
-void RAISRTrainer::solve(SharedContext& shared)
+void RAISRTrainer::solve()
 {
-    copy_examples(shared);
+    // copy_examples();
+    double gaussian[RAISRParam::PatchSize * RAISRParam::PatchSize];
+    gaussian2d(RAISRParam::PatchSize, gaussian, 0.1f);
+
     for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
         for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
             for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
                 for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
-                    Eigen::Matrix<double, RAISRParam::PatchSize2, 1>* H = shared.H_(angle, strength, coherence, pixeltype);
-                    const Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>* Q = shared.Q_(angle, strength, coherence, pixeltype);
-                    const Eigen::Matrix<double, RAISRParam::PatchSize2, 1>* V = shared.V_(angle, strength, coherence, pixeltype);
-                    const auto LDLT = Q->ldlt();
-                    *H = LDLT.solve(*V);
-                    if(Eigen::Success != LDLT.info()){
-                        H->setZero();
+                    Eigen::Matrix<double, RAISRParam::PatchSize2, 1>& H = H_(angle, strength, coherence, pixeltype);
+                    const Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>& Q = Q_(angle, strength, coherence, pixeltype);
+                    const Eigen::Matrix<double, RAISRParam::PatchSize2, 1>& V = V_(angle, strength, coherence, pixeltype);
+                    const auto LDLT = Q.ldlt();
+                    H = LDLT.solve(V);
+                    if(Eigen::Success != LDLT.info()) {
+                        H.setZero();
+                    }
+                    for(int32_t i = 0; i < RAISRParam::PatchSize2; ++i) {
+                        H(i, 0) = gaussian[i];
                     }
                 }
             }
