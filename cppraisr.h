@@ -117,9 +117,27 @@ private:
     MatrixType* matrices_;
 };
 
+class CheckMap
+{
+public:
+    inline static constexpr int32_t Count = RAISRParam::Qangle*RAISRParam::Qstrength*RAISRParam::Qcoherence*RAISRParam::R;
+
+    CheckMap();
+    ~CheckMap();
+    const bool& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const;
+    bool& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type);
+private:
+    CheckMap(const CheckMap&) = delete;
+    CheckMap& operator=(const CheckMap&) = delete;
+    bool* flags_;
+};
+
+
 class RAISRTrainer
 {
 public:
+    inline static constexpr int32_t CheckStep = 1000;
+
     RAISRTrainer();
     ~RAISRTrainer();
 
@@ -134,17 +152,19 @@ private:
     RAISRTrainer(const RAISRTrainer&) = delete;
     RAISRTrainer& operator=(const RAISRTrainer&) = delete;
 
-    void train(const std::filesystem::path& path);
+    bool train(const std::filesystem::path& path);
     void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original);
     void copy_examples();
-    void solve();
+    bool solve();
 
     int32_t max_images_;
+    int32_t check_count_;
     std::filesystem::path current_;
     std::filesystem::path model_name_;
     FilterSet V_;
     MatrixSet Q_;
     FilterSet H_;
+    CheckMap Checks_;
     double weights_[RAISRParam::GradientSize*RAISRParam::GradientSize];
     double patch_image_[RAISRParam::PatchSize*RAISRParam::PatchSize];
     double gradient_image_[RAISRParam::GradientSize*RAISRParam::GradientSize];

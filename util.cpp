@@ -54,6 +54,8 @@ For more information, please refer to <http://unlicense.org>
 #include "util.h"
 #include <cassert>
 #include <numbers>
+#include <algorithm>
+#include <random>
 
 namespace cppraisr
 {
@@ -223,7 +225,7 @@ uint8_t to_uint8(double x)
     return static_cast<uint8_t>(t);
 }
 
-std::vector<std::filesystem::path> parse_directory(const char* path, std::function<bool(const std::filesystem::directory_entry&)> predicate)
+std::vector<std::filesystem::path> parse_directory(const char* path, std::function<bool(const std::filesystem::directory_entry&)> predicate, bool shuffle)
 {
     assert(nullptr != path);
     std::vector<std::filesystem::path> files;
@@ -237,6 +239,11 @@ std::vector<std::filesystem::path> parse_directory(const char* path, std::functi
             }
             files.push_back(entry.path());
         }
+    }
+    if(shuffle){
+        std::random_device seed_gen;
+        std::mt19937 engine(seed_gen());
+        std::shuffle(files.begin(), files.end(), engine);
     }
     return files;
 }
@@ -259,9 +266,18 @@ void gaussian2d(int32_t size, double* w, double sigma)
     }
 }
 
+void box2d(int32_t size, double* w)
+{
+    for(int32_t i = 0; i < size; ++i) {
+        for(int32_t j = 0; j < size; ++j) {
+            w[size * i + j]  = 1.0;
+        }
+    }
+}
+
 void solv2x2(double evalues[2], double evectors[4], const double m[4])
 {
-    // assert(is_equal(m[1], m[2]));
+    assert(is_equal(m[1], m[2]));
     double b = m[0] + m[3];
     double c = m[0] * m[3] - m[1] * m[2];
 
@@ -270,23 +286,49 @@ void solv2x2(double evalues[2], double evectors[4], const double m[4])
     evalues[0] = (b + descr) * 0.5;
     evalues[1] = (b - descr) * 0.5;
 
-    if(1.0e-16 < abs(m[1])) {
+    if(1.0e-32 < abs(m[1])) {
         evectors[0] = m[1];
         evectors[1] = evalues[0] - m[0];
-        evectors[2] = m[1];
-        evectors[3] = evalues[1] - m[0];
+        //evectors[2] = m[1];
+        //evectors[3] = evalues[1] - m[0];
 
-    } else if(1.0e-16 < abs(m[2])) {
-        evectors[0] = evalues[0] - m[3];
-        evectors[1] = m[2];
-        evectors[2] = evalues[1] - m[3];
-        evectors[3] = m[2];
+    //} else if(1.0e-16 < abs(m[2])) {
+    //    evectors[0] = evalues[0] - m[3];
+    //    evectors[1] = m[2];
+        //evectors[2] = evalues[1] - m[3];
+        //evectors[3] = m[2];
 
     } else {
         evectors[0] = 1;
         evectors[1] = 0;
-        evectors[2] = 0;
-        evectors[3] = 1;
+        //evectors[2] = 0;
+        //evectors[3] = 1;
+    }
+}
+
+void solv2x2d(double evalues[2], double evectors[4], const double m[4])
+{
+    // assert(is_equal(m[1], m[2]));
+    double a = m[0];
+    double b = m[1];
+    double d = m[3];
+    double det = std::sqrt((a-d)*(a-d) + 4.0*b*b);
+    double L1 = (a+d+det)/2.0;
+    double L2 = (a+d-det)/2.0;
+    evalues[0] = L1;
+    evalues[1] = L2;
+
+    if(1.0e-32 < abs(m[1])) {
+        evectors[0] = L1-m[3];
+        evectors[1] = m[1];
+
+    } else if(1.0e-32 < abs(m[3])) {
+        evectors[0] = m[1];
+        evectors[1] = L1 - m[0];
+
+    } else {
+        evectors[0] = 1;
+        evectors[1] = 0;
     }
 }
 
@@ -302,14 +344,11 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
 
     double g[4] = {gx, gxy, gxy, gy};
     double evalues[2];
-    double evectors[4];
-    solv2x2(evalues, evectors, g);
+    double evectors[2];
+    solv2x2d(evalues, evectors, g);
 
     // Calc angle, strength, coherence
-    double theta = atan2(evectors[1], evectors[0]);
-    while(theta < 0.0) {
-        theta += std::numbers::pi_v<double>;
-    }
+    double theta = atan2(evectors[1], evectors[0]) + std::numbers::pi_v<double>;
     const double lambda0 = sqrt(evalues[0]);
     const double lambda1 = sqrt(evalues[1]);
     double u;

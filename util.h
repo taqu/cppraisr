@@ -204,7 +204,7 @@ uint8_t to_uint8(double x);
  * @param path ... directory to parse
  * @param predicate ... a function of returning desirable condition
  */
-std::vector<std::filesystem::path> parse_directory(const char* path, std::function<bool(const std::filesystem::directory_entry&)> predicate);
+std::vector<std::filesystem::path> parse_directory(const char* path, std::function<bool(const std::filesystem::directory_entry&)> predicate, bool shuffle);
 
 /**
  * @brief Generate a Gaussian filter
@@ -212,9 +212,19 @@ std::vector<std::filesystem::path> parse_directory(const char* path, std::functi
 void gaussian2d(int32_t size, double* w, double sigma);
 
 /**
+ * @brief Generate a Box filter
+ */
+void box2d(int32_t size, double* w);
+
+/**
  * @brief Solve 2x2 equations and get eigen values, eigen vectors
  */
 void solv2x2(double evalues[2], double evectors[4], const double m[4]);
+
+/**
+ * @brief Solve 2x2 equations and get eigen values, eigen vectors
+ */
+void solv2x2d(double evalues[2], double evectors[4], const double m[4]);
 
 /**
  * @brief Hash function for RAISR

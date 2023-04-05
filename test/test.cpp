@@ -131,7 +131,7 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::Filt
     std::unique_ptr<double> patch_image(new double[RAISRParam::PatchSize*RAISRParam::PatchSize]);
     std::unique_ptr<double> gradient_image(new double[RAISRParam::GradientSize*RAISRParam::GradientSize]);
 
-    gaussian2d(RAISRParam::GradientSize, weights.get(), RAISRParam::Sigma);
+    box2d(RAISRParam::GradientSize, weights.get());
     std::filesystem::path result_directory = std::filesystem::current_path();
     result_directory.append("result");
     if(!std::filesystem::exists(result_directory)) {
@@ -310,7 +310,7 @@ int main(int argc, char** argv)
                                                                        return true;
                                                                    }
                                                                    return false;
-                                                               });
+                                                               }, false);
     test(files, filters, max_images, measure_quality);
     return 0;
 }

@@ -144,8 +144,36 @@ MatrixSet::MatrixType& MatrixSet::operator()(int32_t angle, int32_t strength, in
     return matrices_[index];
 }
 
+CheckMap::CheckMap()
+    : flags_(nullptr)
+{
+    flags_ = new bool[Count];
+    for(int32_t i = 0; i < Count; ++i) {
+        flags_[i] = false;
+    }
+}
+
+CheckMap::~CheckMap()
+{
+    delete[] flags_;
+    flags_ = nullptr;
+}
+
+const bool& CheckMap::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return flags_[index];
+}
+
+bool& CheckMap::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type)
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return flags_[index];
+}
+
 RAISRTrainer::RAISRTrainer()
     : max_images_(0)
+    ,check_count_(0)
 {
 }
 
@@ -162,7 +190,7 @@ void RAISRTrainer::train(
 {
     current_ = std::filesystem::current_path();
     max_images_ = std::min(max_images, static_cast<int32_t>(images.size()));
-    gaussian2d(RAISRParam::GradientSize, weights_, RAISRParam::Sigma);
+    box2d(RAISRParam::GradientSize, weights_);
 
     if(!path_q.empty()) {
         std::ifstream file(path_q.c_str(), std::ios::binary);
@@ -201,7 +229,9 @@ void RAISRTrainer::train(
     for(size_t i = 0; i < max_images_; ++i) {
         std::u8string path = images[i].u8string();
         std::cout << "[" << std::setfill('0') << std::right << std::setw(4) << (i + 1) << '/' << std::setfill('0') << std::right << std::setw(4) << images.size() << "] " << (char*)path.c_str() << std::endl;
-        train(images[i]);
+        if(train(images[i])){
+            break;
+        }
     }
 
     solve();
@@ -240,7 +270,7 @@ void RAISRTrainer::train(
     }
 }
 
-void RAISRTrainer::train(const std::filesystem::path& path)
+bool RAISRTrainer::train(const std::filesystem::path& path)
 {
     ::memset(patch_image_, 0, sizeof(double) * RAISRParam::PatchSize * RAISRParam::PatchSize);
     ::memset(gradient_image_, 0, sizeof(double) * RAISRParam::GradientSize * RAISRParam::GradientSize);
@@ -252,7 +282,7 @@ void RAISRTrainer::train(const std::filesystem::path& path)
         std::u8string u8path = filepath.generic_u8string();
         stbi_uc* pixels = stbi_load(reinterpret_cast<const char*>(u8path.c_str()), &w, &h, &c, STBI_default);
         if(nullptr == pixels) {
-            return;
+            return false;
         }
         original.reset(w, h, c, pixels, stbi_image_free);
     }
@@ -260,7 +290,7 @@ void RAISRTrainer::train(const std::filesystem::path& path)
     if(1 < original.c()) {
         Image<stbi_uc> grey(original.w(), original.h(), 1);
         if(!grey) {
-            return;
+            return false;
         }
         for(int j = 0; j < original.h(); ++j) {
             for(int k = 0; k < original.w(); ++k) {
@@ -274,24 +304,30 @@ void RAISRTrainer::train(const std::filesystem::path& path)
     }
     Image<stbi_uc> upscaledLR(original.w(), original.h(), 1);
     if(!upscaledLR) {
-        return;
+        return false;
     }
     {
         Image<stbi_uc> tmp(original.w() >> 1, original.h() >> 1, 1);
         if(!tmp) {
-            return;
+            return false;
         }
         int r = stbir_resize_uint8_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(stbi_uc), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
         if(!r) {
-            return;
+            return false;
         }
 
         r = stbir_resize_uint8_generic(&tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * tmp.c() * sizeof(stbi_uc), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
         if(!r) {
-            return;
+            return false;
         }
     }
     train_image(upscaledLR, original);
+
+    if(CheckStep<=++check_count_){
+        check_count_ = 0;
+        return solve();
+    }
+    return false;
 }
 
 void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original)
@@ -323,9 +359,10 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
 
     int32_t hend = upscaledLR.h() < margin ? 0 : upscaledLR.h() - margin;
     int32_t wend = upscaledLR.w() < margin ? 0 : upscaledLR.w() - margin;
-    Eigen::Matrix<double, 1, RAISRParam::PatchSize2> A;
-    Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2> ATA;
-    Eigen::Matrix<double, RAISRParam::PatchSize2, 1> ATb;
+
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> A(1, RAISRParam::PatchSize2);
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> ATA(RAISRParam::PatchSize2, RAISRParam::PatchSize2);
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> ATb(RAISRParam::PatchSize2, 1);
 
     for(int32_t i = margin; i < hend; ++i) {
         for(int32_t j = margin; j < wend; ++j) {
@@ -345,6 +382,10 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
 
             int32_t pixeltype = ((i - margin) % RAISRParam::R) * RAISRParam::R + ((j - margin) % RAISRParam::R);
 
+            if(Checks_(angle, strength, coherence, pixeltype)){
+                //Already converged
+                continue;
+            }
             A = Eigen::Map<Eigen::Matrix<double, 1, RAISRParam::PatchSize2>>(patch_image_);
             ATA = A.transpose() * A;
             ATb = A.transpose() * pixelHR;
@@ -355,16 +396,16 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
     }     // int32_t i = margin
 }
 
-#if 0
 void RAISRTrainer::copy_examples()
 {
-    MatrixParamSize2* P = new MatrixParamSize2[7+4];
-    MatrixParamSize2& rotate = P[7];
-    MatrixParamSize2& flip = P[8];
-    MatrixParamSize2& trotate = P[9];
-    MatrixParamSize2& tflip = P[10];
+    std::unique_ptr<MatrixSet::MatrixType> matrices(new MatrixSet::MatrixType[7 + 4]);
+    MatrixSet::MatrixType* P = matrices.get();
+    MatrixSet::MatrixType& rotate = P[7];
+    MatrixSet::MatrixType& flip = P[8];
+    MatrixSet::MatrixType& trotate = P[9];
+    MatrixSet::MatrixType& tflip = P[10];
 
-    for(int32_t i=0; i<7; ++i){
+    for(int32_t i = 0; i < 7; ++i) {
         P[i].setZero();
     }
     rotate.setZero();
@@ -381,14 +422,18 @@ void RAISRTrainer::copy_examples()
     for(int32_t i = 1; i < 8; ++i) {
         int32_t i0 = i % 4;
         int32_t i1 = i >> 2;
-        trotate = rotate.pow(i0);
-        tflip = flip.pow(i1);
-        P[i-1] = tflip*trotate;
+        trotate = rotate;
+        for(int32_t j = 1; j < i0; ++j) {
+            trotate *= rotate;
+        }
+        tflip = flip;
+        for(int32_t j = 1; j < i1; ++j) {
+            tflip *= flip;
+        }
+        P[i - 1] = tflip * trotate;
     }
-    ConjugateSet QExt;
+    MatrixSet QExt;
     FilterSet VExt;
-    QExt.clear_matrix();
-    VExt.clear_matrix();
 
     for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
         for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
@@ -405,53 +450,81 @@ void RAISRTrainer::copy_examples()
                         while(newangle < 0) {
                             newangle += RAISRParam::Qangle;
                         }
-                        const MatrixParamSize2& Q = *shared.Q_(angle, strength, coherence, pixeltype);
-                        const VectorParamSize2& V = *shared.V_(angle, strength, coherence, pixeltype);
+                        const MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
+                        const FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
 
-                        MatrixParamSize2& QE = *QExt(newangle, strength, coherence, pixeltype);
-                        VectorParamSize2& VE = *VExt(newangle, strength, coherence, pixeltype);
+                        MatrixSet::MatrixType& QE = QExt(newangle, strength, coherence, pixeltype);
+                        FilterSet::FilterType& VE = VExt(newangle, strength, coherence, pixeltype);
 
-                        QE += P[m-1].transpose() * Q * P[m-1];
-                        VE += P[m-1].transpose() * V;
+                        QE += P[m - 1].transpose() * Q * P[m - 1];
+                        VE += P[m - 1].transpose() * V;
                     }
-                }
-            }
-        }
-    }
-
-    for(int32_t i=0; i<shared.Q_.count(); ++i){
-        shared.Q_(0,0,0,0)[i] += QExt(0,0,0,0)[i];
-        shared.V_(0,0,0,0)[i] += VExt(0,0,0,0)[i];
-    }
-
-    delete[] P;
-}
-#endif
-
-void RAISRTrainer::solve()
-{
-    // copy_examples();
-    double gaussian[RAISRParam::PatchSize * RAISRParam::PatchSize];
-    gaussian2d(RAISRParam::PatchSize, gaussian, 0.1f);
+                } //for(int32_t angle
+            } //for(int32_t strength
+        } //for(int32_t coherence
+    } //for(int32_t coherence
 
     for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
         for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
             for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
                 for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
-                    Eigen::Matrix<double, RAISRParam::PatchSize2, 1>& H = H_(angle, strength, coherence, pixeltype);
-                    const Eigen::Matrix<double, RAISRParam::PatchSize2, RAISRParam::PatchSize2>& Q = Q_(angle, strength, coherence, pixeltype);
-                    const Eigen::Matrix<double, RAISRParam::PatchSize2, 1>& V = V_(angle, strength, coherence, pixeltype);
+                    MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
+                    FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
+
+                    const MatrixSet::MatrixType& QE = QExt(angle, strength, coherence, pixeltype);
+                    const FilterSet::FilterType& VE = VExt(angle, strength, coherence, pixeltype);
+                    Q += QE;
+                    V += VE;
+                } //for(int32_t angle
+            } //for(int32_t strength
+        } //for(int32_t coherence
+    } //for(int32_t coherence
+}
+
+bool RAISRTrainer::solve()
+{
+    //copy_examples();
+    int32_t count = 0;
+    double total = 0;
+    for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
+        for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
+            for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
+                for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
+                    bool& flag = Checks_(angle, strength, coherence, pixeltype);
+                    if(flag){
+                        continue;
+                    }
+                    FilterSet::FilterType& H = H_(angle, strength, coherence, pixeltype);
+                    const MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
+                    const FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
                     const auto LDLT = Q.ldlt();
                     H = LDLT.solve(V);
                     if(Eigen::Success != LDLT.info()) {
                         H.setZero();
                     }
-                    for(int32_t i = 0; i < RAISRParam::PatchSize2; ++i) {
-                        H(i, 0) = gaussian[i];
+                    double d = 0;
+                    FilterSet::FilterType D = Q * V - H;
+                    for(int32_t r = 0; r < D.rows(); ++r) {
+                        for(int32_t c = 0; c < D.cols(); ++c) {
+                            d += D(r, c) * D(r, c);
+                        }
                     }
-                }
-            }
-        }
+                    d /= D.rows();
+                    std::cout << "[" << count << "] " << d << std::endl;
+                    total += d;
+                    ++count;
+                    if(d<1.0e-16){
+                        flag = true;
+                    }
+                } //for(int32_t angle
+            } //for(int32_t strength
+        } //for(int32_t coherence
+    } //for(int32_t coherence
+    if(count <= 0) {
+        return true;
     }
+    total /= count;
+    std::cout << "total: " << total << " / " << count << std::endl;
+    return false;
 }
 } // namespace cppraisr
