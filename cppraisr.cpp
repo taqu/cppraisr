@@ -483,7 +483,7 @@ void RAISRTrainer::copy_examples()
 
 bool RAISRTrainer::solve()
 {
-    //copy_examples();
+    copy_examples();
     int32_t count = 0;
     double total = 0;
     for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
