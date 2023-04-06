@@ -277,7 +277,6 @@ void box2d(int32_t size, double* w)
 
 void solv2x2(double evalues[2], double evectors[4], const double m[4])
 {
-    assert(is_equal(m[1], m[2]));
     double b = m[0] + m[3];
     double c = m[0] * m[3] - m[1] * m[2];
 
@@ -345,7 +344,7 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     double g[4] = {gx, gxy, gxy, gy};
     double evalues[2];
     double evectors[2];
-    solv2x2d(evalues, evectors, g);
+    solv2x2(evalues, evectors, g);
 
     // Calc angle, strength, coherence
     double theta = atan2(evectors[1], evectors[0]) + std::numbers::pi_v<double>;

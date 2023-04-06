@@ -198,6 +198,20 @@ double to_double(uint8_t x);
  */
 uint8_t to_uint8(double x);
 
+template<class T>
+T to_grey(T r, T g, T b, int32_t base)
+{
+    float x = 0.183f * r + 0.614f * g + 0.062f * b + 16;
+    int32_t i = static_cast<int32_t>(x);
+    if(base<=i){
+        return static_cast<T>(base-1);
+    }
+    if(i<0){
+        return 0;
+    }
+    return static_cast<T>(i);
+}
+
 /**
  * @brief Parse a directory recursively and gather file paths
  * @return gathered paths
