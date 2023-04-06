@@ -173,7 +173,7 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::Filt
         {
             if(measure_quality) {
                 Image<stbi_uc> tmp(original.w() >> 1, original.h() >> 1, original.c());
-                int r = stbir_resize_uint8_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(stbi_uc), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(stbi_uc) * tmp.c(), tmp.c(), 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_BOX, STBIR_COLORSPACE_LINEAR, nullptr);
+                int r = stbir_resize_uint8_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(stbi_uc), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(stbi_uc) * tmp.c(), tmp.c(), 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
                 if(!r) {
                     continue;
                 }

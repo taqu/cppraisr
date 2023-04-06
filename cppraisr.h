@@ -117,26 +117,58 @@ private:
     MatrixType* matrices_;
 };
 
-class CheckMap
+template<class T>
+class MapTemplate
 {
 public:
     inline static constexpr int32_t Count = RAISRParam::Qangle*RAISRParam::Qstrength*RAISRParam::Qcoherence*RAISRParam::R;
 
-    CheckMap();
-    ~CheckMap();
-    const bool& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const;
-    bool& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type);
+    MapTemplate();
+    ~MapTemplate();
+    const T& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const;
+    T& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type);
 private:
-    CheckMap(const CheckMap&) = delete;
-    CheckMap& operator=(const CheckMap&) = delete;
-    bool* flags_;
+    MapTemplate(const MapTemplate&) = delete;
+    MapTemplate& operator=(const MapTemplate&) = delete;
+    T* values_;
 };
 
+template<class T>
+MapTemplate<T>::MapTemplate()
+    : values_(nullptr)
+{
+    values_ = new T[Count];
+    for(int32_t i = 0; i < Count; ++i) {
+        values_[i] = 0;
+    }
+}
+
+template<class T>
+MapTemplate<T>::~MapTemplate()
+{
+    delete[] values_;
+    values_ = nullptr;
+}
+
+template<class T>
+const T& MapTemplate<T>::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return values_[index];
+}
+
+template<class T>
+T& MapTemplate<T>::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type)
+{
+    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
+    return values_[index];
+}
 
 class RAISRTrainer
 {
 public:
     inline static constexpr int32_t CheckStep = 1000;
+    inline static constexpr int32_t MaxSum = 1000000;
 
     RAISRTrainer();
     ~RAISRTrainer();
@@ -164,7 +196,8 @@ private:
     FilterSet V_;
     MatrixSet Q_;
     FilterSet H_;
-    CheckMap Checks_;
+    MapTemplate<bool> Checks_;
+    MapTemplate<int32_t> Counts_;
     double weights_[RAISRParam::GradientSize*RAISRParam::GradientSize];
     double patch_image_[RAISRParam::PatchSize*RAISRParam::PatchSize];
     double gradient_image_[RAISRParam::GradientSize*RAISRParam::GradientSize];

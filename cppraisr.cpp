@@ -144,33 +144,6 @@ MatrixSet::MatrixType& MatrixSet::operator()(int32_t angle, int32_t strength, in
     return matrices_[index];
 }
 
-CheckMap::CheckMap()
-    : flags_(nullptr)
-{
-    flags_ = new bool[Count];
-    for(int32_t i = 0; i < Count; ++i) {
-        flags_[i] = false;
-    }
-}
-
-CheckMap::~CheckMap()
-{
-    delete[] flags_;
-    flags_ = nullptr;
-}
-
-const bool& CheckMap::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type) const
-{
-    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
-    return flags_[index];
-}
-
-bool& CheckMap::operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type)
-{
-    int32_t index = ((angle * RAISRParam::Qstrength + strength) * RAISRParam::Qcoherence + coherence) * RAISRParam::R + pixel_type;
-    return flags_[index];
-}
-
 RAISRTrainer::RAISRTrainer()
     : max_images_(0)
     ,check_count_(0)
@@ -297,7 +270,7 @@ bool RAISRTrainer::train(const std::filesystem::path& path)
                 stbi_uc r = original(k, j, 0);
                 stbi_uc g = original(k, j, 1);
                 stbi_uc b = original(k, j, 2);
-                grey(k, j, 0) = static_cast<stbi_uc>(0.183f * r + 0.614f * g + 0.062f * b + 16);
+                grey(k, j, 0) = to_grey<stbi_uc>(r,g,b,256);
             }
         }
         original.swap(grey);
@@ -386,6 +359,14 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
                 //Already converged
                 continue;
             }
+            Counts_(angle, strength, coherence, pixeltype) += 1;
+            if(MaxSum<=Counts_(angle, strength, coherence, pixeltype)){
+                Counts_(angle, strength, coherence, pixeltype) = 0;
+                Q_(angle, strength, coherence, pixeltype).setZero();
+                V_(angle, strength, coherence, pixeltype).setZero();
+                continue;
+            }
+
             A = Eigen::Map<Eigen::Matrix<double, 1, RAISRParam::PatchSize2>>(patch_image_);
             ATA = A.transpose() * A;
             ATb = A.transpose() * pixelHR;
@@ -497,11 +478,21 @@ bool RAISRTrainer::solve()
                     FilterSet::FilterType& H = H_(angle, strength, coherence, pixeltype);
                     const MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
                     const FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
+                    #if 0
                     const auto LDLT = Q.ldlt();
                     H = LDLT.solve(V);
                     if(Eigen::Success != LDLT.info()) {
                         H.setZero();
                     }
+                    #else
+                    Eigen::BiCGSTAB<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> bicg;
+                    bicg.compute(Q);
+                    H = bicg.solve(V);
+                    bicg.setMaxIterations(RAISRParam::PatchSize2<<2);
+                    if(Eigen::Success != bicg.info()){
+                        H.setZero();
+                    }
+                    #endif
                     double d = 0;
                     FilterSet::FilterType D = Q * V - H;
                     for(int32_t r = 0; r < D.rows(); ++r) {
