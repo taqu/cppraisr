@@ -73,11 +73,11 @@ struct RAISRParam
     inline static constexpr uint8_t PatchSize = 5; //! << Size of patch image
     inline static constexpr uint8_t PatchSize2 = PatchSize * PatchSize;
     inline static constexpr int32_t PatchSize4 = PatchSize2 * PatchSize2;
-    inline static constexpr uint8_t GradientSize = 5; //!< Size of the area on witch calculate gradients
+    inline static constexpr uint8_t GradientSize = 3; //!< Size of the area on witch calculate gradients
     inline static constexpr uint8_t Qangle = 24; //!< Resolution of angle patterns
     inline static constexpr uint8_t Qstrength = 3; //!< Resolution of strength
     inline static constexpr uint8_t Qcoherence = 3; //!< Resolution of coherence
-    inline static constexpr double Sigma = 1.414; //!< Sigma of gaussian for weights matrix
+    inline static constexpr double Sigma = 2.0; //!< Sigma of gaussian for weights matrix
 };
 
 /**
@@ -196,8 +196,7 @@ private:
     FilterSet V_;
     MatrixSet Q_;
     FilterSet H_;
-    MapTemplate<bool> Checks_;
-    MapTemplate<int32_t> Counts_;
+    MapTemplate<int64_t> Counts_;
     double weights_[RAISRParam::GradientSize*RAISRParam::GradientSize];
     double patch_image_[RAISRParam::PatchSize*RAISRParam::PatchSize];
     double gradient_image_[RAISRParam::GradientSize*RAISRParam::GradientSize];

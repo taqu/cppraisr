@@ -69,142 +69,32 @@ namespace
         return std::abs(x) < torelance;
     }
 
-#if 0
-    void gradiant3(double gx[9], double gy[9], const double m[9], const double w[9])
+     float dx(int32_t x, int32_t y, const double m[])
     {
-        // grad x
-        gx[0] = (m[1] - m[0]) * w[0];
-        gx[1] = (m[2] - m[0]) * w[1] * 0.5;
-        gx[2] = (m[3] - m[2]) * w[2];
-
-        gx[3] = (m[5] - m[3]) * w[3];
-        gx[4] = (m[6] - m[3]) * w[4] * 0.5;
-        gx[5] = (m[7] - m[6]) * w[5];
-
-        gx[6] = (m[7] - m[6]) * w[6];
-        gx[7] = (m[8] - m[6]) * w[7] * 0.5;
-        gx[8] = (m[8] - m[7]) * w[8];
-
-        // grad y
-        gy[0] = (m[3] - m[0]) * w[0];
-        gy[1] = (m[6] - m[0]) * w[3] * 0.5;
-        gy[2] = (m[6] - m[3]) * w[6];
-
-        gy[3] = (m[4] - m[1]) * w[1];
-        gy[4] = (m[7] - m[1]) * w[4] * 0.5;
-        gy[5] = (m[7] - m[4]) * w[7];
-
-        gy[6] = (m[5] - m[2]) * w[2];
-        gy[7] = (m[8] - m[2]) * w[5] * 0.5;
-        gy[8] = (m[8] - m[5]) * w[8];
+         return m[y*3+x];
     }
 
-    void gradiant4(double gx[16], double gy[16], const double m[16], const double w[16])
+ float dy(int32_t x, int32_t y, const double m[])
     {
-        // grad x
-        gx[0] = (m[1] - m[0]) * w[0];
-        gx[1] = (m[2] - m[0]) * w[1] * 0.5;
-        gx[2] = (m[3] - m[1]) * w[2] * 0.5;
-        gx[3] = (m[3] - m[2]) * w[3];
-
-        gx[4] = (m[5] - m[4]) * w[4];
-        gx[5] = (m[6] - m[4]) * w[5] * 0.5;
-        gx[6] = (m[7] - m[5]) * w[6] * 0.5;
-        gx[7] = (m[7] - m[6]) * w[7];
-
-        gx[8] = (m[9] - m[8]) * w[8];
-        gx[9] = (m[10] - m[8]) * w[9] * 0.5;
-        gx[10] = (m[11] - m[9]) * w[10] * 0.5;
-        gx[11] = (m[11] - m[10]) * w[11];
-
-        gx[12] = (m[13] - m[12]) * w[12];
-        gx[13] = (m[14] - m[12]) * w[13] * 0.5;
-        gx[14] = (m[15] - m[13]) * w[14] * 0.5;
-        gx[15] = (m[15] - m[14]) * w[15];
-
-        // grad y
-        gy[0] = (m[4] - m[0]) * w[0];
-        gy[1] = (m[8] - m[0]) * w[4] * 0.5;
-        gy[2] = (m[8] - m[4]) * w[8] * 0.5;
-        gy[3] = (m[12] - m[8]) * w[12];
-
-        gy[4] = (m[5] - m[1]) * w[1];
-        gy[5] = (m[9] - m[1]) * w[5] * 0.5;
-        gy[6] = (m[9] - m[5]) * w[9] * 0.5;
-        gy[7] = (m[13] - m[9]) * w[13];
-
-        gy[8] = (m[6] - m[2]) * w[2];
-        gy[9] = (m[10] - m[2]) * w[6] * 0.5;
-        gy[10] = (m[10] - m[6]) * w[10] * 0.5;
-        gy[11] = (m[14] - m[10]) * w[14];
-
-        gy[12] = (m[7] - m[3]) * w[3];
-        gy[13] = (m[11] - m[3]) * w[7] * 0.5;
-        gy[14] = (m[11] - m[7]) * w[11] * 0.5;
-        gy[15] = (m[15] - m[11]) * w[15];
+     return m[y*3+x];
     }
-#endif
 
     /**
      * @brief Calc convolutions of gradients
      */
-    std::tuple<double, double, double> gradient(int32_t size, const double m[], const double w[])
+    std::tuple<double, double> gradient(int32_t size, const double m[], const double w[])
     {
-        double gx = 0.0;
-        double gy = 0.0;
-        double gxy = 0.0;
-        for(int32_t i = 0; i < size; ++i) {
-            int32_t py = i - 1;
-            int32_t ny = i + 1;
-            double wy = 1.0;
-            if(py < 0) {
-                py = 0;
-                wy = 1.0;
-            }
-            if(size <= ny) {
-                ny = size - 1;
-                wy = 1.0;
-            }
+        double gx = 0;
+        gx += (dx(0, 0, m) - dx(2, 0, m)) * 47.0;
+        gx += (dx(0, 1, m) - dx(2, 1, m)) * 162.0;
+        gx += (dx(0, 2, m) - dx(2, 2, m)) * 47.0;
 
-            for(int32_t j = 0; j < size; ++j) {
-                int32_t px = j - 1;
-                int32_t nx = j + 1;
-                double wx = 1.0;
-                if(px < 0) {
-                    px = 0;
-                    wx = 1.0;
-                }
-                if(size <= nx) {
-                    nx = size - 1;
-                    wx = 1.0;
-                }
-                int32_t ic = i * size + j;
-                double x = (m[i * size + nx] - m[i * size + px]);
-                double y = (m[ny * size + j] - m[py * size + j]);
-                gx += x * x * wx*w[ic];
-                gy += y * y * wx*w[ic];
-                gxy += x * y * wx*wy*w[ic];
-            }
-        }
-        return std::make_tuple(gx, gy, gxy);
+        double gy = 0;
+        gy += (dx(0, 0, m) - dx(0, 2, m)) * 47.0;
+        gy += (dx(1, 0, m) - dx(1, 2, m)) * 162.0;
+        gy += (dx(2, 0, m) - dx(2, 2, m)) * 47.0;
+        return std::make_tuple(gx, gy);
     }
-#if 0
-    void conv2(double g[4], int32_t size, const double gx[], const double gy[])
-    {
-        double gxgx = 0.0;
-        double gxgy = 0.0;
-        double gygy = 0.0;
-        for(int32_t i = 0; i < size; ++i) {
-            gxgx += gx[i] * gx[i];
-            gxgy += gx[i] * gy[i];
-            gygy += gy[i] * gy[i];
-        }
-        g[0] = gxgx;
-        g[1] = gxgy;
-        g[2] = gxgy;
-        g[3] = gygy;
-    }
-#endif
 } // namespace
 
 double to_double(uint8_t x)
@@ -339,24 +229,20 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     assert(0 < angles);
 
     // Calc eigen values and eigen vectors of gradients
-    auto [gx, gy, gxy] = gradient(gradient_size, gradient_patch, weights);
-
-    double g[4] = {gx, gxy, gxy, gy};
-    double evalues[2];
-    double evectors[2];
-    solv2x2(evalues, evectors, g);
+    auto [gx, gy] = gradient(gradient_size, gradient_patch, weights);
 
     // Calc angle, strength, coherence
-    double theta = atan2(evectors[1], evectors[0]) + std::numbers::pi_v<double>;
-    const double lambda0 = sqrt(evalues[0]);
-    const double lambda1 = sqrt(evalues[1]);
+    double theta = atan2(gy, gx) + std::numbers::pi_v<double>;
+    const double lambda0 = sqrt(abs(gx));
+    const double lambda1 = sqrt(abs(gy));
     double u;
     if(is_zero(lambda0) && is_zero(lambda1)) {
         u = 0.0;
     } else {
-        u = (lambda0 - lambda1) / (lambda0 + lambda1);
+        u = abs(lambda0 - lambda1) / (lambda0 + lambda1);
+        u /= 256.0;
     }
-    double lamda = evalues[0];
+    double lamda = sqrt(gx*gx + gy*gy)/256.0;
     int32_t strength;
     if(lamda < 0.0001) {
         strength = 0;

@@ -354,11 +354,6 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
             double pixelHR = to_double(original(j, i, 0));
 
             int32_t pixeltype = ((i - margin) % RAISRParam::R) * RAISRParam::R + ((j - margin) % RAISRParam::R);
-
-            if(Checks_(angle, strength, coherence, pixeltype)){
-                //Already converged
-                continue;
-            }
             Counts_(angle, strength, coherence, pixeltype) += 1;
             if(MaxSum<=Counts_(angle, strength, coherence, pixeltype)){
                 Counts_(angle, strength, coherence, pixeltype) = 0;
@@ -464,49 +459,44 @@ void RAISRTrainer::copy_examples()
 
 bool RAISRTrainer::solve()
 {
-    copy_examples();
+    //copy_examples();
+    FilterSet PH;
     int32_t count = 0;
     double total = 0;
     for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
         for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
             for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
                 for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
-                    bool& flag = Checks_(angle, strength, coherence, pixeltype);
-                    if(flag){
-                        continue;
-                    }
-                    FilterSet::FilterType& H = H_(angle, strength, coherence, pixeltype);
+                    FilterSet::FilterType& pH = H_(angle, strength, coherence, pixeltype);
+                    FilterSet::FilterType& nH = PH(angle, strength, coherence, pixeltype);
                     const MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
                     const FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
-                    #if 0
-                    const auto LDLT = Q.ldlt();
-                    H = LDLT.solve(V);
-                    if(Eigen::Success != LDLT.info()) {
-                        H.setZero();
-                    }
-                    #else
+                    const int64_t c = Counts_(angle, strength, coherence, pixeltype);
                     Eigen::BiCGSTAB<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> bicg;
                     bicg.compute(Q);
-                    H = bicg.solve(V);
+                    nH = bicg.solve(V);
                     bicg.setMaxIterations(RAISRParam::PatchSize2<<2);
                     if(Eigen::Success != bicg.info()){
-                        H.setZero();
+                        nH.setZero();
                     }
-                    #endif
-                    double d = 0;
-                    FilterSet::FilterType D = Q * V - H;
-                    for(int32_t r = 0; r < D.rows(); ++r) {
-                        for(int32_t c = 0; c < D.cols(); ++c) {
-                            d += D(r, c) * D(r, c);
+                    double pd = 0;
+                    double nd = 0;
+                    FilterSet::FilterType pD = Q * pH - V;
+                     FilterSet::FilterType nD = Q * nH - V;
+                    for(int32_t r = 0; r < nD.rows(); ++r) {
+                        for(int32_t c = 0; c < nD.cols(); ++c) {
+                            pd += pD(r,c) * pD(r,c);
+                            nd += nD(r, c) * nD(r, c);
                         }
                     }
-                    d /= D.rows();
-                    std::cout << "[" << count << "] " << d << std::endl;
-                    total += d;
-                    ++count;
-                    if(d<1.0e-16){
-                        flag = true;
+                    pd /= nD.rows();
+                    nd /= nD.rows();
+                    if(0<c && nd<pd){
+                        pH = nH;
+                        total += nd;
                     }
+                    std::cout << "[" << count << "] " << nd << " /" << c << std::endl;
+                    ++count;
                 } //for(int32_t angle
             } //for(int32_t strength
         } //for(int32_t coherence
