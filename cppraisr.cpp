@@ -456,6 +456,50 @@ void RAISRTrainer::copy_examples()
         } //for(int32_t coherence
     } //for(int32_t coherence
 }
+#if 0
+import numpy as np
+
+def cgls(A, b):
+    height, width = A.shape
+    x = np.zeros((height))
+    while(True):
+        sumA = A.sum()
+        if (sumA < 100):
+            break
+        if (np.linalg.det(A) < 1):
+            A = A + np.eye(height, width) * sumA * 0.000000005
+        else:
+            x = np.linalg.inv(A).dot(b)
+            break
+    return x
+
+#endif
+
+FilterSet::FilterType RAISRTrainer::solve(const MatrixSet::MatrixType& Q, const FilterSet::FilterType& V)
+{
+    int32_t width = RAISRParam::PatchSize2;
+    int32_t height = RAISRParam::PatchSize2;
+    FilterSet::FilterType H;
+    H.setZero();
+    MatrixSet::MatrixType I;
+    I.setIdentity();
+    MatrixSet::MatrixType A = Q;
+    FilterSet::FilterType X;
+    X.setZero();
+    for(;;){
+        double sumA = A.sum();
+        if(sumA<100){
+            break;
+        }
+        if(A.determinant()<1.0){
+            A = A + I*sumA*000000005;
+        }else{
+            X = A.inverse() * V;
+            break;
+        }
+    }
+    return X;
+}
 
 bool RAISRTrainer::solve()
 {
@@ -471,18 +515,23 @@ bool RAISRTrainer::solve()
                     FilterSet::FilterType& nH = PH(angle, strength, coherence, pixeltype);
                     const MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
                     const FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
-                    const int64_t c = Counts_(angle, strength, coherence, pixeltype);
+                    const int64_t C = Counts_(angle, strength, coherence, pixeltype);
+
+                    #if 1
+                    nH = solve(Q, V);
+                    #else
                     Eigen::BiCGSTAB<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> bicg;
                     bicg.compute(Q);
                     nH = bicg.solve(V);
-                    bicg.setMaxIterations(RAISRParam::PatchSize2<<2);
+                    //bicg.setMaxIterations(RAISRParam::PatchSize2<<2);
                     if(Eigen::Success != bicg.info()){
                         nH.setZero();
                     }
+                    #endif
                     double pd = 0;
                     double nd = 0;
                     FilterSet::FilterType pD = Q * pH - V;
-                     FilterSet::FilterType nD = Q * nH - V;
+                    FilterSet::FilterType nD = Q * nH - V;
                     for(int32_t r = 0; r < nD.rows(); ++r) {
                         for(int32_t c = 0; c < nD.cols(); ++c) {
                             pd += pD(r,c) * pD(r,c);
@@ -491,11 +540,11 @@ bool RAISRTrainer::solve()
                     }
                     pd /= nD.rows();
                     nd /= nD.rows();
-                    if(0<c && nd<pd){
+                    if(0<C && nd<pd){
                         pH = nH;
                         total += nd;
                     }
-                    std::cout << "[" << count << "] " << nd << " /" << c << std::endl;
+                    std::cout << "[" << count << "] " << nd << " /" << C << std::endl;
                     ++count;
                 } //for(int32_t angle
             } //for(int32_t strength

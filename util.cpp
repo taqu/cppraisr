@@ -233,8 +233,8 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
 
     // Calc angle, strength, coherence
     double theta = atan2(gy, gx) + std::numbers::pi_v<double>;
-    const double lambda0 = sqrt(abs(gx));
-    const double lambda1 = sqrt(abs(gy));
+    const double lambda0 = abs(gx);
+    const double lambda1 = abs(gy);
     double u;
     if(is_zero(lambda0) && is_zero(lambda1)) {
         u = 0.0;
@@ -244,9 +244,9 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     }
     double lamda = sqrt(gx*gx + gy*gy)/256.0;
     int32_t strength;
-    if(lamda < 0.0001) {
+    if(lamda < 0.125) {
         strength = 0;
-    } else if(0.001 < lamda) {
+    } else if(0.25 < lamda) {
         strength = 2;
     } else {
         strength = 1;
@@ -260,6 +260,7 @@ std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const doubl
     } else {
         coherence = 1;
     }
+    coherence = 0;
     int32_t angle = static_cast<int32_t>(floor(theta / (2.0 * std::numbers::pi) * angles));
     if(angles <= angle) {
         angle = angles - 1;

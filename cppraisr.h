@@ -76,7 +76,7 @@ struct RAISRParam
     inline static constexpr uint8_t GradientSize = 3; //!< Size of the area on witch calculate gradients
     inline static constexpr uint8_t Qangle = 24; //!< Resolution of angle patterns
     inline static constexpr uint8_t Qstrength = 3; //!< Resolution of strength
-    inline static constexpr uint8_t Qcoherence = 3; //!< Resolution of coherence
+    inline static constexpr uint8_t Qcoherence = 1; //!< Resolution of coherence
     inline static constexpr double Sigma = 2.0; //!< Sigma of gaussian for weights matrix
 };
 
@@ -187,6 +187,7 @@ private:
     bool train(const std::filesystem::path& path);
     void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original);
     void copy_examples();
+    FilterSet::FilterType solve(const MatrixSet::MatrixType& Q, const FilterSet::FilterType& V);
     bool solve();
 
     int32_t max_images_;
