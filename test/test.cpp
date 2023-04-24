@@ -191,9 +191,8 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::Filt
             }
         }
 
- #if 1
-        double gaussian[RAISRParam::PatchSize*RAISRParam::PatchSize];
-        gaussian2d(RAISRParam::PatchSize, gaussian, 2.0f);
+        Image<stbi_uc> result(dw, dh, original.c());
+        ::memcpy(&result(0,0,0), &upscaled(0,0,0), sizeof(stbi_uc)*result.h()*result.w()*result.c());
 
         int32_t half_patch_size = RAISRParam::PatchSize >> 1;
         int32_t half_gradient_size = RAISRParam::GradientSize >> 1;
@@ -222,17 +221,16 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::Filt
                         pixelHR += patch_image.get()[y*RAISRParam::PatchSize+x] * h(y*RAISRParam::PatchSize+x,0);
                     }
                 }
-                upscaled(j, i, 0) = to_uint8(pixelHR);
+                result(j, i, 0) = to_uint8(pixelHR);
             } // int32_t j = margin
         }     // int32_t i = margin
-#endif
         {
             std::filesystem::path filepath = result_directory;
             std::filesystem::path filename = images[count].filename();
             filename.replace_extension("png");
             filepath.append(filename.c_str());
-            ycbcr2rgb(upscaled);
-            stbi_write_png((const char*)filepath.u8string().c_str(), upscaled.w(), upscaled.h(), upscaled.c(), &upscaled(0, 0, 0), sizeof(stbi_uc) * upscaled.w() * upscaled.c());
+            ycbcr2rgb(result);
+            stbi_write_png((const char*)filepath.u8string().c_str(), result.w(), result.h(), result.c(), &result(0, 0, 0), sizeof(stbi_uc) * result.w() * result.c());
         }
 
         if(measure_quality){
