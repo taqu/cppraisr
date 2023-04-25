@@ -167,7 +167,7 @@ T& MapTemplate<T>::operator()(int32_t angle, int32_t strength, int32_t coherence
 class RAISRTrainer
 {
 public:
-    inline static constexpr int32_t CheckStep = 1000;
+    inline static constexpr int32_t CheckStep = 2000;
     inline static constexpr int32_t MaxSum = 1000000;
 
     RAISRTrainer();

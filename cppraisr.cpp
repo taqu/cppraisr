@@ -493,31 +493,32 @@ bool RAISRTrainer::solve()
             for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
                 for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
                     FilterSet::FilterType& H = H_(angle, strength, coherence, pixeltype);
-                    const MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
-                    const FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
-                    const int64_t C = Counts_(angle, strength, coherence, pixeltype);
-
-#if 1
-                    H = solve(Q, V);
-#else
-                    Eigen::BiCGSTAB<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> bicg;
-                    bicg.compute(Q);
-                    nH = bicg.solve(V);
-                    // bicg.setMaxIterations(RAISRParam::PatchSize2<<2);
-                    if(Eigen::Success != bicg.info()) {
-                        nH.setZero();
-                    }
-#endif
-                    double d = 0;
+                    MatrixSet::MatrixType& Q = Q_(angle, strength, coherence, pixeltype);
+                    FilterSet::FilterType& V = V_(angle, strength, coherence, pixeltype);
+                    int64_t& C = Counts_(angle, strength, coherence, pixeltype);
+                    FilterSet::FilterType nH = solve(Q, V);
                     FilterSet::FilterType D = Q * H - V;
+                    FilterSet::FilterType nD = Q * nH - V;
+                    double d = 0.0;
+                    double nd = 0.0;
                     for(int32_t r = 0; r < D.rows(); ++r) {
                         for(int32_t c = 0; c < D.cols(); ++c) {
                             d += D(r, c) * D(r, c);
+                            nd += nD(r,c)*nD(r,c);
                         }
                     }
                     d /= (D.rows() * D.cols());
+                    nd /= (D.rows()*D.cols());
+                    int64_t c = C;
+                    if(0<C && nd<d){
+                        Q.setZero();
+                        V.setZero();
+                        C = 0;
+                        d = nd;
+                        H = nH;
+                    }
                     total += d;
-                    std::cout << "[" << count << "] " << d << " /" << C << std::endl;
+                    std::cout << "[" << count << "] " << d << " /" << c << std::endl;
                     ++count;
                 } // for(int32_t angle
             }     // for(int32_t strength

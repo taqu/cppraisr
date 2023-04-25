@@ -28,7 +28,7 @@ set(HEADERS
     ${THIRDPARTY_ROOT}/stb/stb_image_resize.h)
 
 if(MSVC)
-    set(DEFAULT_CXX_FLAGS "/DWIN32 /D_WINDOWS /D_UNICODE /W4 /WX- /nologo /fp:precise /arch:AVX /Zc:wchar_t /TP /Gd /bigobj")
+    set(DEFAULT_CXX_FLAGS "/DWIN32 /D_WINDOWS /D_UNICODE /W4 /WX- /nologo /fp:precise /arch:AVX /Zc:wchar_t /TP /Gd")
     if(MSVC_VERSION VERSION_LESS_EQUAL "1900")
         set(DEFAULT_CXX_FLAGS "${DEFAULT_CXX_FLAGS} /Zc:__cplusplus /std:c++latest")
     else()
@@ -39,8 +39,8 @@ if(MSVC)
     set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Zi /Ob0 /Od /RTC1 /Gy /GR- /GS /Gm- /EHsc")
     set(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /Oi /GL /GR- /DNDEBUG /EHsc-")
 
-    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "/SUBSYSTEM:CONSOLE /DEBUG /bigobj")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG /SUBSYSTEM:CONSOLE /bigobj")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "/SUBSYSTEM:CONSOLE /DEBUG")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG /SUBSYSTEM:CONSOLE")
 
 elseif(UNIX)
     set(CMAKE_CXX_FLAGS "-Wall -Wextra -std=c++20 -march=x86-64-v3")
