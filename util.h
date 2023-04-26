@@ -193,6 +193,11 @@ void Image<T>::swap(Image<T>& other)
  * @brief Convert [0 255] integer to [0 1] float
  */
 double to_double(uint8_t x);
+inline double to_double(float x)
+{
+    return x;
+}
+
 /**
  * @brief Convert [0 1] float to [0 255] integer
  */
@@ -201,7 +206,7 @@ uint8_t to_uint8(double x);
 template<class T>
 T to_grey(T r, T g, T b, int32_t base)
 {
-    float x = 0.183f * r + 0.614f * g + 0.062f * b + 16;
+    float x = 0.183f * r + 0.614f * g + 0.062f * b + 16.0f;
     int32_t i = static_cast<int32_t>(x);
     if(base<=i){
         return static_cast<T>(base-1);
@@ -210,6 +215,11 @@ T to_grey(T r, T g, T b, int32_t base)
         return 0;
     }
     return static_cast<T>(i);
+}
+
+inline float to_grey(float r, float g, float b)
+{
+    return 0.183f * r + 0.614f * g + 0.062f * b + 16.0f/256.0f;
 }
 
 /**
@@ -243,7 +253,7 @@ void solv2x2d(double evalues[2], double evectors[4], const double m[4]);
 /**
  * @brief Hash function for RAISR
  */
-std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const double* gradient_patch, const double* weights, int32_t angles);
+std::tuple<int32_t, int32_t, int32_t> hashkey(const double* gradient_patch, int32_t angles);
 
 /**
  * @brief Calc SSIM of a patch image

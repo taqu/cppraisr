@@ -212,7 +212,7 @@ void test(const std::vector<std::filesystem::path>& images, const cppraisr::Filt
                         gradient_image.get()[(y + half_gradient_size)*RAISRParam::GradientSize + x + half_gradient_size] = to_double(upscaled(tx, ty, 0));
                     }
                 }
-                auto [angle, strength, coherence] = hashkey(RAISRParam::GradientSize, gradient_image.get(), weights.get(), RAISRParam::Qangle);
+                auto [angle, strength, coherence] = hashkey(gradient_image.get(), RAISRParam::Qangle);
                 int32_t pixeltype = (i % RAISRParam::R) * RAISRParam::R + (j % RAISRParam::R);
                 const FilterSet::FilterType& h = filters(angle, strength, coherence, pixeltype);
                 double pixelHR = 0.0;

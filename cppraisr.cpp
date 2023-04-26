@@ -147,6 +147,9 @@ MatrixSet::MatrixType& MatrixSet::operator()(int32_t angle, int32_t strength, in
 RAISRTrainer::RAISRTrainer()
     : max_images_(0)
     , check_count_(0)
+    , weights_{}
+    , patch_image_{}
+    , gradient_image_{}
 {
 }
 
@@ -218,10 +221,10 @@ void RAISRTrainer::train(
         }
 
         filepath = model_name_.string();
-        filepath.append(".json");
+        filepath.append(".js");
         file.open(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
-            file << "{\"filter\":[\n";
+            file << "var filter = [\n";
             for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
                 for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
                     for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
@@ -229,6 +232,7 @@ void RAISRTrainer::train(
                             const FilterSet::FilterType& filter = H_(angle, strength, coherence, pixeltype);
                             for(int32_t i = 0; i < filter.rows(); ++i) {
                                 double x = filter(i, 0);
+                                file << std::setprecision(12);
                                 file << x << ',';
                             }
                             file << '\n';
@@ -237,7 +241,7 @@ void RAISRTrainer::train(
                 }
             }
             file.seekp(-2, std::ios::_Seekcur);
-            file << "\n]}\n";
+            file << "\n];\n";
             file.close();
         }
     }
@@ -247,13 +251,13 @@ bool RAISRTrainer::train(const std::filesystem::path& path)
 {
     ::memset(patch_image_, 0, sizeof(double) * RAISRParam::PatchSize * RAISRParam::PatchSize);
     ::memset(gradient_image_, 0, sizeof(double) * RAISRParam::GradientSize * RAISRParam::GradientSize);
-    Image<stbi_uc> original;
+    Image<float> original;
     {
         std::filesystem::path filepath = current_;
         filepath.append(path.c_str());
         int32_t w = 0, h = 0, c = 0;
         std::u8string u8path = filepath.generic_u8string();
-        stbi_uc* pixels = stbi_load(reinterpret_cast<const char*>(u8path.c_str()), &w, &h, &c, STBI_default);
+        float* pixels = stbi_loadf(reinterpret_cast<const char*>(u8path.c_str()), &w, &h, &c, STBI_default);
         if(nullptr == pixels) {
             return false;
         }
@@ -261,35 +265,38 @@ bool RAISRTrainer::train(const std::filesystem::path& path)
     }
 
     if(1 < original.c()) {
-        Image<stbi_uc> grey(original.w(), original.h(), 1);
+        Image<float> grey(original.w(), original.h(), 1);
         if(!grey) {
             return false;
         }
         for(int j = 0; j < original.h(); ++j) {
             for(int k = 0; k < original.w(); ++k) {
-                stbi_uc r = original(k, j, 0);
-                stbi_uc g = original(k, j, 1);
-                stbi_uc b = original(k, j, 2);
-                grey(k, j, 0) = to_grey<stbi_uc>(r, g, b, 256);
+                float r = original(k, j, 0);
+                float g = original(k, j, 1);
+                float b = original(k, j, 2);
+                grey(k, j, 0) = to_grey(r, g, b);
             }
         }
         original.swap(grey);
     }
-    Image<stbi_uc> upscaledLR(original.w(), original.h(), 1);
+    Image<float> upscaledLR(original.w(), original.h(), 1);
     if(!upscaledLR) {
         return false;
     }
     {
-        Image<stbi_uc> tmp(original.w() >> 1, original.h() >> 1, 1);
+        Image<float> tmp(original.w() >> 1, original.h() >> 1, 1);
         if(!tmp) {
             return false;
         }
-        int r = stbir_resize_uint8_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(stbi_uc), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
+        int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
+        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
+        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CATMULLROM, STBIR_COLORSPACE_LINEAR, nullptr);
+        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR, nullptr);
         if(!r) {
             return false;
         }
 
-        r = stbir_resize_uint8_generic(&tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * tmp.c() * sizeof(stbi_uc), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(stbi_uc), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
+        r = stbir_resize_float_generic(&tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * tmp.c() * sizeof(float), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
         if(!r) {
             return false;
         }
@@ -303,7 +310,7 @@ bool RAISRTrainer::train(const std::filesystem::path& path)
     return false;
 }
 
-void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original)
+void RAISRTrainer::train_image(const Image<float>& upscaledLR, const Image<float>& original)
 {
     int32_t patch_begin;
     int32_t patch_end;
@@ -350,7 +357,7 @@ void RAISRTrainer::train_image(const Image<stbi_uc>& upscaledLR, const Image<stb
                 }
             }
 
-            auto [angle, strength, coherence] = hashkey(RAISRParam::GradientSize, gradient_image_, weights_, RAISRParam::Qangle);
+            auto [angle, strength, coherence] = hashkey(gradient_image_, RAISRParam::Qangle);
             double pixelHR = to_double(original(j, i, 0));
 
             int32_t pixeltype = ((i - margin) % RAISRParam::R) * RAISRParam::R + ((j - margin) % RAISRParam::R);
@@ -459,8 +466,6 @@ void RAISRTrainer::copy_examples()
 
 FilterSet::FilterType RAISRTrainer::solve(const MatrixSet::MatrixType& Q, const FilterSet::FilterType& V)
 {
-    int32_t width = RAISRParam::PatchSize2;
-    int32_t height = RAISRParam::PatchSize2;
     FilterSet::FilterType H;
     H.setZero();
     MatrixSet::MatrixType I;

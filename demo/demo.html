@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>demo</title>
+        <script src="filter.js">
+        </script>
+        <script id="shader-vs" type="x-shader/x-vertex">#version 300 es
+            precision highp float;
+            in vec3 aPosition;
+            in vec2 aTexcoord;
+
+            out vec2 vTexcoord;
+            void main()
+            {
+                gl_Position = vec4(aPosition, 1.0);
+                vTexcoord = aTexcoord;
+            }
+        </script>
+        <script id="shader-fs" type="x-shader/x-fragment">#version 300 es
+            precision highp float;
+            #define R (1)
+            #define Patch (5)
+            #define Qangle (24)
+            #define Qstrength (3)
+            #define Qcoherence (1)
+            layout(std140) uniform Filter
+            {
+                vec4 F[(R*Qangle*Qstrength*Qcoherence*Patch*Patch)/4];
+            };
+
+            float to_gray(vec4 c)
+            {
+                return 0.183 * c.x + 0.614 * c.y + 0.062 * c.z + 16.0/256.0;
+            }
+
+            vec2 gradient(float p[25])
+            {
+                vec2 g = vec2(0.0,0.0);
+                g.x += (p[6] - p[8]) * 47.0;
+                g.x += (p[11] - p[13]) * 162.0;
+                g.x += (p[16] - p[18]) * 47.0;
+
+                g.y += (p[6] - p[16]) * 47.0;
+                g.y += (p[7] - p[17]) * 162.0;
+                g.y += (p[8] - p[18]) * 47.0;
+                return g;
+            }
+
+            vec4 rgb2ycbcr(vec4 c)
+            {
+                float y = (0.183 * c.x + 0.614 * c.y + 0.062 * c.z + 16.0/256.0);
+                float cb = (-0.101 * c.x - 0.339 * c.y + 0.439 * c.z + 128.0/256.0);
+                float cr = (0.439 * c.x - 0.399 * c.y - 0.040 * c.z + 128.0/256.0);
+                return vec4(y,cb,cr,c.w);
+            }
+            vec4 ycbcr2rgb(vec4 c)
+            {
+                float y = c.x;
+                float cb = c.y;
+                float cr = c.z;
+                float r = clamp(1.164 * (y - 16.0/256.0) + 1.793 * (cr - 128.0/256.0), 0.0, 1.0);
+                float g = clamp(1.164 * (y - 16.0/256.0) - 0.213 * (cb - 128.0/256.0) - 0.533 * (cr - 128.0/256.0), 0.0, 1.0);
+                float b = clamp(1.164 * (y - 16.0/256.0) + 2.112 * (cb - 128.0/256.0), 0.0, 1.0);
+                return vec4(r,g,b,c.w);
+            }
+            
+#define PI (3.14159265359)
+#define PI2 (1.57070963268)
+            float atan2(float y, float x)
+            {
+                if (x == 0.0f){
+		            if(0.0f < y){
+                        return PI2;
+                    }
+		            if(y == 0.0f){
+                        return 0.0f;
+                    }
+		            return -PI2;
+	            }
+	            float atan;
+	            float z = y/x;
+	            if(1.0f < abs( z )){
+		            atan = z/(1.0f + 0.28f*z*z);
+		            if(0.0f < x){
+			            if(y < 0.0f){
+                            return atan - PI;
+                        }
+			            return atan + PI;
+		            }
+	            }else{
+		            atan = PI2 - z/(z*z + 0.28f);
+		            if(y < 0.0f){
+                        return atan - PI;
+                    }
+	            }
+	            return atan;
+            }
+
+            int hash(float gray[25])
+            {
+                vec2 g = gradient(gray);
+                // Calc angle, strength, coherence
+                float theta = max(atan2(g.y,g.x) + PI, 0.0);
+                float lambda = sqrt(g.x*g.x + g.y*g.y)*(1.0/256.0);
+                int strength;
+                if(lambda<0.125){
+                    strength = 0;
+                }else if(0.25 < lambda){
+                    strength = 2;
+                }else{
+                    strength = 1;
+                }
+                int coherence = 0;
+                int angle = min(int(floor(theta/(2.0*PI)*float(Qangle))), Qangle-1);
+                return angle*Qstrength + strength;
+            }
+
+            in vec2 vTexcoord;
+            uniform sampler2D uSampler;
+            out vec4 outColor;
+            void main()
+            {
+                vec4 samples[Patch*Patch];
+                ivec2 size = textureSize(uSampler, 0);
+#if 0
+                ivec2 c = ivec2(int(float(size.x)*vTexcoord.x), int(float(size.y)*vTexcoord.y));
+                samples[0] = texelFetch(uSampler, c + ivec2(-2,-2), 0);
+                samples[1] = texelFetch(uSampler, c + ivec2(-1,-2), 0);
+                samples[2] = texelFetch(uSampler, c + ivec2( 0,-2), 0);
+                samples[3] = texelFetch(uSampler, c + ivec2( 1,-2), 0);
+                samples[4] = texelFetch(uSampler, c + ivec2( 2,-2), 0);
+
+                samples[5] = texelFetch(uSampler, c + ivec2(-2,-1), 0);
+                samples[6] = texelFetch(uSampler, c + ivec2(-1,-1), 0);
+                samples[7] = texelFetch(uSampler, c + ivec2( 0,-1), 0);
+                samples[8] = texelFetch(uSampler, c + ivec2( 1,-1), 0);
+                samples[9] = texelFetch(uSampler, c + ivec2( 2,-1), 0);
+
+                samples[10] = texelFetch(uSampler, c + ivec2(-2,0), 0);
+                samples[11] = texelFetch(uSampler, c + ivec2(-1,0), 0);
+                samples[12] = texelFetch(uSampler, c + ivec2( 0,0), 0);
+                samples[13] = texelFetch(uSampler, c + ivec2( 1,0), 0);
+                samples[14] = texelFetch(uSampler, c + ivec2( 2,0), 0);
+
+                samples[15] = texelFetch(uSampler, c + ivec2(-2,1), 0);
+                samples[16] = texelFetch(uSampler, c + ivec2(-1,1), 0);
+                samples[17] = texelFetch(uSampler, c + ivec2( 0,1), 0);
+                samples[18] = texelFetch(uSampler, c + ivec2( 1,1), 0);
+                samples[19] = texelFetch(uSampler, c + ivec2( 2,1), 0);
+
+                samples[20] = texelFetch(uSampler, c + ivec2(-2,2), 0);
+                samples[21] = texelFetch(uSampler, c + ivec2(-1,2), 0);
+                samples[22] = texelFetch(uSampler, c + ivec2( 0,2), 0);
+                samples[23] = texelFetch(uSampler, c + ivec2( 1,2), 0);
+                samples[24] = texelFetch(uSampler, c + ivec2( 2,2), 0);
+#else
+                vec2 c = vTexcoord;
+                vec2 d1 = vec2(1.0/float(size.x), 1.0/float(size.y));
+                vec2 d2 = 2.0*d1;
+                samples[0] = texture(uSampler, c + vec2(-d2.x,-d2.y));
+                samples[1] = texture(uSampler, c + vec2(-d1.x,-d2.y));
+                samples[2] = texture(uSampler, c + vec2(  0.0,-d2.y));
+                samples[3] = texture(uSampler, c + vec2( d1.x,-d2.y));
+                samples[4] = texture(uSampler, c + vec2( d2.x,-d2.y));
+
+                samples[5] = texture(uSampler, c + vec2(-d2.x,-d1.y));
+                samples[6] = texture(uSampler, c + vec2(-d1.x,-d1.y));
+                samples[7] = texture(uSampler, c + vec2(  0.0,-d1.y));
+                samples[8] = texture(uSampler, c + vec2( d1.x,-d1.y));
+                samples[9] = texture(uSampler, c + vec2( d2.x,-d1.y));
+
+                samples[10] = texture(uSampler, c + vec2(-d2.x,0.0));
+                samples[11] = texture(uSampler, c + vec2(-d1.x,0.0));
+                samples[12] = texture(uSampler, c + vec2(  0.0,0.0));
+                samples[13] = texture(uSampler, c + vec2( d1.x,0.0));
+                samples[14] = texture(uSampler, c + vec2( d2.x,0.0));
+
+                samples[15] = texture(uSampler, c + vec2(-d2.x,d1.y));
+                samples[16] = texture(uSampler, c + vec2(-d1.x,d1.y));
+                samples[17] = texture(uSampler, c + vec2(  0.0,d1.y));
+                samples[18] = texture(uSampler, c + vec2( d1.x,d1.y));
+                samples[19] = texture(uSampler, c + vec2( d2.x,d1.y));
+
+                samples[20] = texture(uSampler, c + vec2(-d2.x,d2.y));
+                samples[21] = texture(uSampler, c + vec2(-d1.x,d2.y));
+                samples[22] = texture(uSampler, c + vec2(  0.0,d2.y));
+                samples[23] = texture(uSampler, c + vec2( d1.x,d2.y));
+                samples[24] = texture(uSampler, c + vec2( d2.x,d2.y));
+#endif
+                float y[25];
+                for(int i=0; i<25; ++i){
+                    y[i] = to_gray(samples[i]);
+                }
+                int h = hash(y);
+                int index = h*Patch*Patch;
+                float filtered = 0.0;
+                for(int i=0; i<(Patch*Patch); ++i){
+                    int vindex = (index+i)/4;
+                    int eindex = (index+i) - (4*vindex);
+                    filtered += F[vindex][eindex] * y[i];
+                }
+                vec4 center = rgb2ycbcr(texture(uSampler, vTexcoord));
+                center.x = filtered;
+                center = ycbcr2rgb(center);
+                outColor = center;
+            }
+        </script>
+        <script>
+            function getShader(id) {
+                script = document.getElementById(id);
+                if (!script) {
+                    return null;
+                }
+                source = "";
+                child = script.firstChild;
+                while (child) {
+                    if (child.nodeType == child.TEXT_NODE) {
+                        source += child.textContent;
+                    }
+                    child = child.nextSibling;
+                }
+                return source;
+            }
+
+            function loadShader(gl, type, source) {
+                shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            function initShaderProgram(gl, vsSource, fsSource) {
+                vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+                fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+                shaderProgram = gl.createProgram();
+                gl.attachShader(shaderProgram, vertexShader);
+                gl.attachShader(shaderProgram, fragmentShader);
+                gl.linkProgram(shaderProgram);
+                if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                    console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+                    gl.deleteProgram(shaderProgram);
+                    return null;
+                }
+                return shaderProgram;
+            }
+
+            function requestCORSIfNotSameOrigin(image, url) {
+                if ((new URL(url, window.location.href)).origin !== window.location.origin) {
+                    image.crossOrigin = "";
+                }
+            }
+            class App {
+                canvas = null;
+                canvas_h = null;
+                gl = null;
+                init() {
+                    this.canvas = document.getElementById('canvas');
+                    this.canvas_h = document.getElementById('canvas_h');
+                    this.gl = this.canvas.getContext('webgl2');
+                    if (null == this.gl) {
+                        return;
+                    }
+                    this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                    this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                    this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+                    this.initTextures();
+                    this.initBuffers();
+                    this.initShaders();
+                }
+                render() {
+                    var gl = this.gl;
+                    gl.clear(gl.COLOR_BUFFER_BIT);
+
+                    gl.useProgram(this.shaderProgram);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                    gl.vertexAttribPointer(this.attrLocations.position, 3, gl.FLOAT, false, 0, 0);
+                    gl.enableVertexAttribArray(this.attrLocations.position);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
+                    gl.vertexAttribPointer(this.attrLocations.texcoord, 2, gl.FLOAT, false, 0, 0);
+                    gl.enableVertexAttribArray(this.attrLocations.texcoord);
+
+                    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.filterBuffer);
+                    gl.activeTexture(gl.TEXTURE0);
+                    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+                    gl.uniform1i(this.uniformLocations.sampler, 0);
+
+                    gl.uniform1f(this.uniformLocations.width, this.width);
+                    gl.uniform1f(this.uniformLocations.height, this.height);
+
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                }
+
+                initTextures() {
+                    this.texture = this.gl.createTexture();
+                    var image = new Image();
+                    var url = 'img_002_SRF_2_LR.png';
+                    image.onload = () => {
+                        this.handleTextureLoaded(this.gl, image, this.texture);
+                        this.canvas.width = image.width * 2;
+                        this.canvas.height = image.height * 2;
+                        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                    };
+                    image.src = url;
+
+                    var image_h = new Image();
+                    var url_h = 'img_002_SRF_2_HR.png';
+                    image_h.onload = () => {
+                        this.canvas_h.width = image_h.width;
+                        this.canvas_h.height = image_h.height;
+                        var context = this.canvas_h.getContext('2d');
+                        context.drawImage(image_h, 0, 0);
+                    };
+                    image_h.src = url_h;
+                }
+                handleTextureLoaded(gl, image, texture) {
+                    gl.bindTexture(gl.TEXTURE_2D, texture);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, 0);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0);
+                    gl.generateMipmap(gl.TEXTURE_2D);
+                    gl.bindTexture(gl.TEXTURE_2D, null);
+                }
+
+                initBuffers() {
+                    this.vertexBuffer = this.gl.createBuffer();
+                    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
+                    var positions = [
+                        -1.0, 1.0, 0.0,
+                        1.0, 1.0, 0.0,
+                        -1.0, -1.0, 0.0,
+                        1.0, -1.0, 0.0
+                    ];
+                    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(positions), this.gl.STATIC_DRAW);
+
+                    this.uvBuffer = this.gl.createBuffer();
+                    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.uvBuffer);
+                    var uvs = [
+                        0.0, 0.0,
+                        1.0, 0.0,
+                        0.0, 1.0,
+                        1.0, 1.0
+                    ];
+                    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(uvs), this.gl.STATIC_DRAW);
+                    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
+
+                    this.filterBuffer = this.gl.createBuffer();
+                    this.gl.bindBuffer(this.gl.UNIFORM_BUFFER, this.filterBuffer);
+                    this.gl.bufferData(this.gl.UNIFORM_BUFFER, new Float32Array(filter), this.gl.STATIC_DRAW);
+                    this.gl.bindBuffer(this.gl.UNIFORM_BUFFER, null);
+                }
+
+                initShaders() {
+                    this.shaderProgram = initShaderProgram(this.gl, getShader('shader-vs'), getShader('shader-fs'));
+                    this.attrLocations = {
+                        position: this.gl.getAttribLocation(this.shaderProgram, 'aPosition'),
+                        texcoord: this.gl.getAttribLocation(this.shaderProgram, 'aTexcoord')
+                    };
+                    this.uniformLocations = {
+                        filter: this.gl.getUniformBlockIndex(this.shaderProgram, 'Filter'),
+                        sampler: this.gl.getUniformLocation(this.shaderProgram, 'uSampler')
+                    };
+                    this.gl.uniformBlockBinding(this.shaderProgram, this.uniformLocations.filter, 0);
+                    //console.log(this.gl.getActiveUniformBlockParameter(this.shaderProgram, 0, this.gl.UNIFORM_BLOCK_DATA_SIZE));
+                }
+            }
+
+            app = new App();
+            function global_render()
+            {
+                app.render();
+                window.requestAnimationFrame(global_render);
+            };
+            window.onload = () => { app.init(); global_render(); };
+        </script>
+    </head>
+    <body>
+        <canvas id="canvas" width="512" height="512"></canvas>
+        <canvas id="canvas_h" width="512" height="512"></canvas>
+    </body>
+</html>
+

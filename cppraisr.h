@@ -185,7 +185,7 @@ private:
     RAISRTrainer& operator=(const RAISRTrainer&) = delete;
 
     bool train(const std::filesystem::path& path);
-    void train_image(const Image<stbi_uc>& upscaledLR, const Image<stbi_uc>& original);
+    void train_image(const Image<float>& upscaledLR, const Image<float>& original);
     void copy_examples();
     FilterSet::FilterType solve(const MatrixSet::MatrixType& Q, const FilterSet::FilterType& V);
     bool solve();

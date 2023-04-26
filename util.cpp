@@ -64,6 +64,11 @@ namespace
     /**
      * @brief Check zero
      */
+    bool is_zero(float x, float torelance = 1.0e-6)
+    {
+        return std::abs(x) < torelance;
+    }
+
     bool is_zero(double x, double torelance = 1.0e-10)
     {
         return std::abs(x) < torelance;
@@ -71,29 +76,57 @@ namespace
 
      float dx(int32_t x, int32_t y, const double m[])
     {
-         return m[y*3+x];
+         return static_cast<float>(m[y*3+x]);
     }
 
- float dy(int32_t x, int32_t y, const double m[])
-    {
-     return m[y*3+x];
-    }
 
     /**
      * @brief Calc convolutions of gradients
      */
-    std::tuple<double, double> gradient(int32_t size, const double m[], const double w[])
+    std::tuple<float, float> gradient(const double m[])
     {
-        double gx = 0;
-        gx += (dx(0, 0, m) - dx(2, 0, m)) * 47.0;
-        gx += (dx(0, 1, m) - dx(2, 1, m)) * 162.0;
-        gx += (dx(0, 2, m) - dx(2, 2, m)) * 47.0;
+        float gx = 0;
+        gx += (dx(0, 0, m) - dx(2, 0, m)) * 47.0f;
+        gx += (dx(0, 1, m) - dx(2, 1, m)) * 162.0f;
+        gx += (dx(0, 2, m) - dx(2, 2, m)) * 47.0f;
 
-        double gy = 0;
-        gy += (dx(0, 0, m) - dx(0, 2, m)) * 47.0;
-        gy += (dx(1, 0, m) - dx(1, 2, m)) * 162.0;
-        gy += (dx(2, 0, m) - dx(2, 2, m)) * 47.0;
-        return std::make_tuple(gx, gy);
+        float gy = 0;
+        gy += (dx(0, 0, m) - dx(0, 2, m)) * 47.0f;
+        gy += (dx(1, 0, m) - dx(1, 2, m)) * 162.0f;
+        gy += (dx(2, 0, m) - dx(2, 2, m)) * 47.0f;
+        return std::make_tuple(static_cast<float>(gx), static_cast<float>(gy));
+    }
+
+#define PI (3.14159265359f)
+#define PI2 (1.5707963268f)
+    float atan2_fast(float y, float x)
+    {
+        if(x == 0.0f) {
+            if(0.0f < y) {
+                return PI2;
+            }
+            if(y == 0.0f) {
+                return 0.0f;
+            }
+            return -PI2;
+        }
+        float atan;
+        float z = y / x;
+        if(abs(z) < 1.0f) {
+            atan = z / (1.0f + 0.28f * z * z);
+            if(x < 0.0f) {
+                if(y < 0.0f) {
+                    return atan - PI;
+                }
+                return atan + PI;
+            }
+        } else {
+            atan = PI2 - z / (z * z + 0.28f);
+            if(y < 0.0f) {
+                return atan - PI;
+            }
+        }
+        return atan;
     }
 } // namespace
 
@@ -221,50 +254,49 @@ void solv2x2d(double evalues[2], double evectors[4], const double m[4])
     }
 }
 
-std::tuple<int32_t, int32_t, int32_t> hashkey(int32_t gradient_size, const double* gradient_patch, const double* weights, int32_t angles)
+std::tuple<int32_t, int32_t, int32_t> hashkey(const double* gradient_patch, int32_t angles)
 {
-    assert(0 < gradient_size && gradient_size <= 7);
     assert(nullptr != gradient_patch);
-    assert(nullptr != weights);
     assert(0 < angles);
 
     // Calc eigen values and eigen vectors of gradients
-    auto [gx, gy] = gradient(gradient_size, gradient_patch, weights);
+    auto [gx, gy] = gradient(gradient_patch);
 
     // Calc angle, strength, coherence
-    double theta = atan2(gy, gx) + std::numbers::pi_v<double>;
-    const double lambda0 = abs(gx);
-    const double lambda1 = abs(gy);
-    double u;
-    if(is_zero(lambda0) && is_zero(lambda1)) {
-        u = 0.0;
-    } else {
-        u = abs(lambda0 - lambda1) / (lambda0 + lambda1);
-        u /= 256.0;
-    }
-    double lamda = sqrt(gx*gx + gy*gy)/256.0;
+    float theta = std::max(atan2_fast(gy, gx) + PI,0.0f);
+    //const float lambda0 = abs(gx);
+    //const float lambda1 = abs(gy);
+    //float u;
+    //if(is_zero(lambda0) && is_zero(lambda1)) {
+    //    u = 0.0;
+    //} else {
+    //    u = abs(lambda0 - lambda1) / (lambda0 + lambda1);
+    //    u *= (100.0f/256.0f);
+    //}
+    float lamda = sqrt(gx*gx + gy*gy)*(1.0f/256.0f);
     int32_t strength;
-    if(lamda < 0.125) {
+    if(lamda < 0.125f) {
         strength = 0;
-    } else if(0.25 < lamda) {
+    } else if(0.25f < lamda) {
         strength = 2;
     } else {
         strength = 1;
     }
 
     int32_t coherence;
-    if(u < 0.25) {
-        coherence = 0;
-    } else if(0.5 < u) {
-        coherence = 2;
-    } else {
-        coherence = 1;
-    }
+    //if(u < 0.0003f) {
+    //    coherence = 0;
+    //} else if(0.0006f < u) {
+    //    coherence = 2;
+    //} else {
+    //    coherence = 1;
+    //}
     coherence = 0;
-    int32_t angle = static_cast<int32_t>(floor(theta / (2.0 * std::numbers::pi) * angles));
+    int32_t angle = static_cast<int32_t>(floor(theta / (2.0f * PI) * angles));
     if(angles <= angle) {
         angle = angles - 1;
     }
     return std::make_tuple(angle, strength, coherence);
 }
+
 } // namespace cppraisr
