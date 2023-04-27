@@ -95,6 +95,7 @@ public:
     FilterType& operator()(int32_t angle, int32_t strength, int32_t coherence, int32_t pixel_type);
     void write(std::ostream& os);
     void read(std::istream& is);
+    void write_js(std::ostream& os);
 private:
     FilterSet(const FilterSet&) = delete;
     FilterSet& operator=(const FilterSet&) = delete;

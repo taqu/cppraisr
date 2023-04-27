@@ -117,6 +117,23 @@ void FilterSet::read(std::istream& is)
     }
 }
 
+void FilterSet::write_js(std::ostream& os)
+{
+    os << "var filter = [\n";
+    for(int32_t i = 0; i < Count; ++i) {
+        for(int32_t r = 0; r < filters_[i].rows(); ++r) {
+            for(int32_t c = 0; c < filters_[i].cols(); ++c) {
+                double x = filters_[i](r, c);
+                os << std::setprecision(12);
+                os << x << ',';
+            }
+        }
+        os << "\n";
+    }
+    os.seekp(-2, std::ios::_Seekcur);
+    os << "\n];\n";
+}
+
 MatrixSet::MatrixSet()
     : matrices_(nullptr)
 {
@@ -224,24 +241,7 @@ void RAISRTrainer::train(
         filepath.append(".js");
         file.open(filepath.c_str(), std::ios::binary);
         if(file.is_open()) {
-            file << "var filter = [\n";
-            for(int32_t pixeltype = 0; pixeltype < RAISRParam::R2; ++pixeltype) {
-                for(int32_t coherence = 0; coherence < RAISRParam::Qcoherence; ++coherence) {
-                    for(int32_t strength = 0; strength < RAISRParam::Qstrength; ++strength) {
-                        for(int32_t angle = 0; angle < RAISRParam::Qangle; ++angle) {
-                            const FilterSet::FilterType& filter = H_(angle, strength, coherence, pixeltype);
-                            for(int32_t i = 0; i < filter.rows(); ++i) {
-                                double x = filter(i, 0);
-                                file << std::setprecision(12);
-                                file << x << ',';
-                            }
-                            file << '\n';
-                        }
-                    }
-                }
-            }
-            file.seekp(-2, std::ios::_Seekcur);
-            file << "\n];\n";
+            H_.write_js(file);
             file.close();
         }
     }
@@ -288,9 +288,9 @@ bool RAISRTrainer::train(const std::filesystem::path& path)
         if(!tmp) {
             return false;
         }
-        int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
+        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
         //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
-        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CATMULLROM, STBIR_COLORSPACE_LINEAR, nullptr);
+        int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CATMULLROM, STBIR_COLORSPACE_LINEAR, nullptr);
         //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR, nullptr);
         if(!r) {
             return false;

@@ -127,11 +127,9 @@ int32_t reflect(int32_t x, int32_t size)
 void test(const std::vector<std::filesystem::path>& images, const cppraisr::FilterSet& filters, int32_t max_images, bool measure_quality)
 {
     using namespace cppraisr;
-    std::unique_ptr<double> weights(new double[RAISRParam::GradientSize*RAISRParam::GradientSize]);
     std::unique_ptr<double> patch_image(new double[RAISRParam::PatchSize*RAISRParam::PatchSize]);
     std::unique_ptr<double> gradient_image(new double[RAISRParam::GradientSize*RAISRParam::GradientSize]);
 
-    box2d(RAISRParam::GradientSize, weights.get());
     std::filesystem::path result_directory = std::filesystem::current_path();
     result_directory.append("result");
     if(!std::filesystem::exists(result_directory)) {

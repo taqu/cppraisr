@@ -219,7 +219,7 @@ T to_grey(T r, T g, T b, int32_t base)
 
 inline float to_grey(float r, float g, float b)
 {
-    return 0.183f * r + 0.614f * g + 0.062f * b + 16.0f/256.0f;
+    return 0.183f * r + 0.614f * g + 0.062f * b + 16.0f/255.0f;
 }
 
 /**
