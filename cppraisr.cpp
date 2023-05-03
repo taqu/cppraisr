@@ -290,8 +290,8 @@ bool RAISRTrainer::train(const std::filesystem::path& path)
         }
         //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
         //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
-        int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CATMULLROM, STBIR_COLORSPACE_LINEAR, nullptr);
-        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR, nullptr);
+        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CATMULLROM, STBIR_COLORSPACE_LINEAR, nullptr);
+        int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR, nullptr);
         if(!r) {
             return false;
         }

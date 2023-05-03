@@ -261,6 +261,14 @@
                 }
             }
 
+            function toU8(x) {
+                x = 256.0 * x;
+                if (x < 0.0) {
+                    return 0;
+                }
+                return 256.0 <= x ? 255 : Math.trunc(x);
+            }
+
             function linearToSRGB(image, canvas) {
                 var w = image.width;
                 var h = image.height;
@@ -275,12 +283,15 @@
                 for (y = 0; y < h; ++y) {
                     for (x = 0; x < w; ++x) {
                         var index = (y * w + x) * 4;
-                        var r = data[index + 0];
-                        var g = data[index + 1];
-                        var b = data[index + 2];
-                        data[index + 0] = (r <= 0.0031308)? 12.92 * r : 1.055 * Math.pow(r, 1.0 / 2.4) - 0.055;
-                        data[index + 1] = (g <= 0.0031308)? 12.92 * g : 1.055 * Math.pow(g, 1.0 / 2.4) - 0.055;
-                        data[index + 2] = (b <= 0.0031308)? 12.92 * b : 1.055 * Math.pow(b, 1.0 / 2.4) - 0.055;
+                        var r = 1.0/255.0 * data[index + 0];
+                        var g = 1.0/255.0 * data[index + 1];
+                        var b = 1.0/255.0 * data[index + 2];
+                        var tr = (r <= 0.0031308)? 12.92 * r : 1.055 * Math.pow(r, 1.0 / 2.4) - 0.055;
+                        var tg = (g <= 0.0031308)? 12.92 * g : 1.055 * Math.pow(g, 1.0 / 2.4) - 0.055;
+                        var tb = (b <= 0.0031308) ? 12.92 * b : 1.055 * Math.pow(b, 1.0 / 2.4) - 0.055;
+                        data[index + 0] = toU8(tr);
+                        data[index + 1] = toU8(tg);
+                        data[index + 2] = toU8(tb);
                     }
                 }
                 context.putImageData(imageData, 0, 0);
@@ -301,18 +312,21 @@
                 for (y = 0; y < h; ++y) {
                     for (x = 0; x < w; ++x) {
                         var index = (y * w + x) * 4;
-                        var r = data[index + 0];
-                        var g = data[index + 1];
-                        var b = data[index + 2];
-                        data[index + 0] = (r <= 0.04045)? r / 12.92: Math.pow((r + 0.055) / 1.055, 2.4);
-                        data[index + 1] = (g <= 0.04045)? g / 12.92: Math.pow((g + 0.055) / 1.055, 2.4);
-                        data[index + 2] = (b <= 0.04045)? b / 12.92: Math.pow((b + 0.055) / 1.055, 2.4);
+                        var r = (1.0 / 255.0) * data[index + 0];
+                        var g = (1.0 / 255.0) * data[index + 1];
+                        var b = (1.0 / 255.0) * data[index + 2];
+                        var tr = (r <= 0.04045)? r / 12.92: Math.pow((r + 0.055) / 1.055, 2.4);
+                        var tg = (g <= 0.04045)? g / 12.92: Math.pow((g + 0.055) / 1.055, 2.4);
+                        var tb = (b <= 0.04045) ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
+                        data[index + 0] = toU8(tr);
+                        data[index + 1] = toU8(tg);
+                        data[index + 2] = toU8(tb);
                     }
                 }
                 context2d.putImageData(imageData, 0, 0);
                 image.src = canvas.toDataURL();
-                canvas.width = 0;
-                canvas.height = 0;
+                //canvas.width = 0;
+                //canvas.height = 0;
                 return image;
             }
 
@@ -362,8 +376,10 @@
                     this.texture = this.gl.createTexture();
                     var image = new Image();
                     var url = 'img_002_SRF_2_LR.png';
+                    image.src = url;
                     image.onload = () => {
-                        //image = linearToSRGB(image, this.canvas_work, this.context2d);
+                        image.onload = null;
+                        //image = sRGBToLinear(image, this.canvas_work, this.context2d);
                         this.handleTextureLoaded(this.gl, image, this.texture);
                         this.canvas.width = image.width * 2;
                         this.canvas.height = image.height * 2;
@@ -374,6 +390,7 @@
                     var image_h = new Image();
                     var url_h = 'img_002_SRF_2_HR.png';
                     image_h.onload = () => {
+                        image_h.onload = null;
                         this.canvas_h.width = image_h.width;
                         this.canvas_h.height = image_h.height;
                         var context = this.canvas_h.getContext('2d');
