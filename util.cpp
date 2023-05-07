@@ -61,20 +61,7 @@ namespace cppraisr
 {
 namespace
 {
-    /**
-     * @brief Check zero
-     */
-    bool is_zero(float x, float torelance = 1.0e-6)
-    {
-        return std::abs(x) < torelance;
-    }
-
-    bool is_zero(double x, double torelance = 1.0e-10)
-    {
-        return std::abs(x) < torelance;
-    }
-
-     float dx(int32_t x, int32_t y, const double m[])
+    float dx(int32_t x, int32_t y, const double m[])
     {
          return static_cast<float>(m[y*3+x]);
     }
