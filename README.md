@@ -30,11 +30,10 @@ $ ./bin/train
 
 You can use some options.
 ```
-usage: train [-help] [-q QMatrix] [-v VVector] [-max Max Images] [-threads Number of Threads]
+usage: train [-help] [-f Filter] [-max Max Images] [-threads Number of Threads]
 arguments:
         -help   show this help
-        -q      continue to train Q matrix from this file
-        -v      continue to train V vector from this file
+        -f      a filter name to write without extension
         -max    the max number of training images
         -threads        the number of threads to use
 ```
