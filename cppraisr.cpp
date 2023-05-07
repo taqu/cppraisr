@@ -130,7 +130,7 @@ void FilterSet::write_js(std::ostream& os)
         }
         os << "\n";
     }
-    os.seekp(-2, std::ios::_Seekcur);
+    os.seekp(-2, std::ios::cur);
     os << "\n];\n";
 }
 
@@ -211,15 +211,24 @@ void RAISRTrainer::train(
         struct tm now = *std::localtime(&t);
 #endif
         now.tm_year += 1900;
+#ifdef _WIN32
         model_name_.append(std::format("filter_{0:04d}{1:02d}{2:02d}_{3:02d}{4:02d}{5:02d}",
                                        now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec));
+#else
+        {
+            char buffer[128] = {};
+            sprintf(buffer, "filter_%04d%02d%02d%02d%02d%02d",
+                now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec);
+            model_name_.append(buffer);
+        }
+#endif
         std::filesystem::path directory = model_name_.parent_path();
         if(!std::filesystem::exists(directory)) {
             std::filesystem::create_directory(directory);
         }
     }
 
-    for(size_t i = 0; i < max_images_; ++i) {
+    for(int32_t i = 0; i < max_images_; ++i) {
         std::u8string path = images[i].u8string();
         std::cout << "[" << std::setfill('0') << std::right << std::setw(4) << (i + 1) << '/' << std::setfill('0') << std::right << std::setw(4) << images.size() << "] " << (char*)path.c_str() << std::endl;
         if(train(images[i])) {
