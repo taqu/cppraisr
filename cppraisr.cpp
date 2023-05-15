@@ -292,24 +292,33 @@ bool RAISRTrainer::train(const std::filesystem::path& path)
     if(!upscaledLR) {
         return false;
     }
+    #if 0
     {
-        Image<float> tmp(original.w() >> 1, original.h() >> 1, 1);
-        if(!tmp) {
-            return false;
-        }
+        //Image<float> tmp(original.w() >> 1, original.h() >> 1, 1);
+        //if(!tmp) {
+        //    return false;
+        //}
         //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
-        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
+        int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CUBICBSPLINE, STBIR_COLORSPACE_LINEAR, nullptr);
         //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_CATMULLROM, STBIR_COLORSPACE_LINEAR, nullptr);
-        int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR, nullptr);
+        //int r = stbir_resize_float_generic(&original(0, 0, 0), original.w(), original.h(), original.w() * original.c() * sizeof(float), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR, nullptr);
         if(!r) {
             return false;
         }
 
-        r = stbir_resize_float_generic(&tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * tmp.c() * sizeof(float), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
-        if(!r) {
-            return false;
-        }
+        //r = stbir_resize_float_generic(&tmp(0, 0, 0), tmp.w(), tmp.h(), tmp.w() * tmp.c() * sizeof(float), &upscaledLR(0, 0, 0), upscaledLR.w(), upscaledLR.h(), upscaledLR.w() * sizeof(float), 1, 0, 0, STBIR_EDGE_REFLECT, STBIR_FILTER_TRIANGLE, STBIR_COLORSPACE_LINEAR, nullptr);
+        //if(!r) {
+        //    return false;
+        //}
     }
+    #else
+    {
+        static const int32_t kernel_size = 5;
+        float weights[kernel_size*kernel_size] = {};
+        gaussian2d(kernel_size, weights, 0.9f);
+        conv2d(original.w(), original.h(), &upscaledLR(0,0,0), &original(0,0,0), kernel_size, weights);
+    }
+    #endif
     train_image(upscaledLR, original);
 
     if(CheckStep <= ++check_count_) {

@@ -158,21 +158,42 @@ std::vector<std::filesystem::path> parse_directory(const char* path, std::functi
     return files;
 }
 
-void gaussian2d(int32_t size, double* w, double sigma)
+namespace
 {
-    int32_t half = size >> 1;
-    double total = 0.0;
-    for(int32_t i = 0; i < size; ++i) {
-        double dy = i - half;
-        for(int32_t j = 0; j < size; ++j) {
-            double dx = j - half;
-            w[size * i + j] = exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma));
-            total += w[size * i + j];
+    int32_t mirror(int32_t size, int32_t offset, int32_t x)
+    {
+        x += offset;
+        if(x<0){
+            x = std::min(-x, size-1);
+        }else if(size<=x){
+            x = std::max(size - (x-size)-1, 0);
         }
+        return x;
     }
-    total = 1.0 / total;
-    for(int32_t i = 0; i < (size * size); ++i) {
-        w[i] *= total;
+
+    float conv(int32_t width, int32_t height, int32_t x, int32_t y, const float* src, int32_t size, const float* weights)
+    {
+        int32_t half = size / 2;
+        float total = 0.0f;
+        for(int32_t i = -half; i <= half; ++i) {
+            int32_t ty = mirror(height, i, y);
+            for(int32_t j = -half; j <= half; ++j) {
+                int32_t tx = mirror(width, j, x);
+                float x = src[ty * width + tx];
+                total += x * weights[(i + half) * size + (j + half)];
+            }
+        }
+        return total;
+    }
+} // namespace
+
+void conv2d(int32_t width, int32_t height, float* dst, const float* src, int32_t size, const float* weights)
+{
+    for(int32_t i = 0; i < height; ++i) {
+        for(int32_t j = 0; j < width; ++j) {
+            int32_t index = i * width + j;
+            dst[index] = conv(width, height, j, i, src, size, weights);
+        }
     }
 }
 

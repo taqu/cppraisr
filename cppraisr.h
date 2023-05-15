@@ -81,7 +81,7 @@ struct RAISRParam
 };
 
 /**
- *
+ * @brief Filters
  */
 class FilterSet
 {
@@ -102,6 +102,9 @@ private:
     FilterType* filters_;
 };
 
+/**
+ * 
+ */
 class MatrixSet
 {
 public:

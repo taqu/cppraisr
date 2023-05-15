@@ -233,7 +233,26 @@ std::vector<std::filesystem::path> parse_directory(const char* path, std::functi
 /**
  * @brief Generate a Gaussian filter
  */
-void gaussian2d(int32_t size, double* w, double sigma);
+template<class T>
+void gaussian2d(int32_t size, T* w, T sigma)
+{
+    int32_t half = size >> 1;
+    T total = 0.0;
+    for(int32_t i = 0; i < size; ++i) {
+        T dy = i - half;
+        for(int32_t j = 0; j < size; ++j) {
+            T dx = j - half;
+            w[size * i + j] = exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma));
+            total += w[size * i + j];
+        }
+    }
+    total = 1.0 / total;
+    for(int32_t i = 0; i < (size * size); ++i) {
+        w[i] *= total;
+    }
+}
+
+void conv2d(int32_t width, int32_t height, float* dst, const float* src, int32_t size, const float* weights);
 
 /**
  * @brief Generate a Box filter
